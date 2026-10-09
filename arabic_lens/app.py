@@ -1,5 +1,6 @@
 import copy
 import asyncio
+import sys
 import logging
 import os
 import time
@@ -318,7 +319,8 @@ class Application:
             return
         self.window.set_update_status("Installing update…")
         async def start_installer():
-            return await asyncio.to_thread(self.update_service.launch_installer, path)
+            return await asyncio.to_thread(self.update_service.launch_installer, path,
+                executable=sys.executable, data_directory=self.service.directory)
         job = self.engine._submit(start_installer())
         self.update_install_job = job
         def finished(future):

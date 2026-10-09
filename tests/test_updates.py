@@ -131,7 +131,7 @@ def test_download_streams_verifies_and_launches_only_checked_file(tmp_path, monk
     monkeypatch.setattr("arabic_lens.updates.subprocess.Popen",
                         lambda argv, **kwargs: launches.append((argv, kwargs)) or object())
     service.launch_installer(installer)
-    assert launches[0][0] == [str(installer), "/SILENT", "/NORESTART", "/CLOSEAPPLICATIONS"]
+    assert launches[0][0] == [str(installer), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CLOSEAPPLICATIONS"]
     with pytest.raises(UpdateError):
         UpdateService(REPOSITORY, "0.1.0").launch_installer(installer)
     installer.write_bytes(INSTALLER + b"changed")

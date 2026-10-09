@@ -43,6 +43,7 @@ class UpdateInfo:
     installer_url: str
     sha256: str
     size_bytes: int
+    asset_name: str = INSTALLER_NAME
 
 
 def _version_parts(version: str) -> tuple[int, ...]:
@@ -119,6 +120,7 @@ class UpdateService:
             raise ValueError("The update timeout must be positive.")
         self.timeout = timeout
         self._verified_paths: dict[Path, str] = {}
+        self._verified_versions: dict[Path, str] = {}
 
     @property
     def api_url(self) -> str:
@@ -160,7 +162,10 @@ class UpdateService:
         if not isinstance(data.get("assets"), list):
             raise UpdateError("The release has no Windows installer.")
         assets = [item for item in data["assets"] if isinstance(item, dict)]
-        installer = next((item for item in assets if item.get("name") == INSTALLER_NAME), None)
+        delta_name = f"ArabicLens-Update-{self.current_version}.zip"
+        asset_name = next((name for name in (delta_name, 'ArabicLens-Update-full.zip', INSTALLER_NAME)
+                           if any(item.get('name') == name for item in assets)), INSTALLER_NAME)
+        installer = next((item for item in assets if item.get("name") == asset_name), None)
         if installer is None or installer.get("state", "uploaded") != "uploaded":
             raise UpdateError("The release has no Windows installer.")
         size = installer.get("size")
@@ -169,22 +174,25 @@ class UpdateService:
         url = installer.get("browser_download_url")
         if not isinstance(url, str):
             raise UpdateError("The release has no secure installer link.")
-        _asset_url(url, self.repository, tag, INSTALLER_NAME)
+        _asset_url(url, self.repository, tag, asset_name)
         checksum = _digest(installer.get("digest"))
         if checksum is None:
-            companion_name = INSTALLER_NAME + ".sha256"
+            companion_name = asset_name + ".sha256"
             companion = next((item for item in assets if item.get("name") == companion_name), None)
             if companion is None or not isinstance(companion.get("browser_download_url"), str):
                 raise UpdateError("The release has no installer checksum.")
             checksum_url = _asset_url(companion["browser_download_url"], self.repository, tag, companion_name)
             try:
                 checksum_bytes = await self._read_small_https(client, checksum_url, MAX_CHECKSUM_BYTES)
-                checksum = _checksum_file(checksum_bytes.decode("ascii"))
+                checksum_text = checksum_bytes.decode('ascii')
+                if asset_name != INSTALLER_NAME:
+                    checksum_text = checksum_text.replace(asset_name, INSTALLER_NAME)
+                checksum = _checksum_file(checksum_text)
             except (UnicodeError, httpx.HTTPError) as exc:
                 raise UpdateError("The installer checksum could not be read.") from exc
         notes = data.get("body") if isinstance(data.get("body"), str) else ""
         release_url = f"https://github.com/{self.repository}/releases/tag/{quote(tag, safe='')}"
-        return UpdateInfo(tag.lstrip("vV"), notes[:2000], release_url, url, checksum, size)
+        return UpdateInfo(tag.lstrip("vV"), notes[:2000], release_url, url, checksum, size, asset_name)
 
     @staticmethod
     async def _read_small_https(client: httpx.AsyncClient, url: str, limit: int) -> bytes:
@@ -235,7 +243,10 @@ class UpdateService:
         if len(path_parts) != 7 or path_parts[4] != "download":
             raise UpdateError("The installer link is invalid.")
         tag = path_parts[5]
-        _asset_url(info.installer_url, self.repository, tag, INSTALLER_NAME)
+        if info.asset_name not in (INSTALLER_NAME, 'ArabicLens-Update-full.zip',
+                                   f'ArabicLens-Update-{self.current_version}.zip'):
+            raise UpdateError('The update package name is invalid.')
+        _asset_url(info.installer_url, self.repository, tag, info.asset_name)
         if _version_parts(tag) != _version_parts(info.version):
             raise UpdateError("The installer version does not match the release.")
         if not _SHA256.fullmatch(info.sha256) or not 2 <= info.size_bytes <= MAX_INSTALLER_BYTES:
@@ -247,8 +258,8 @@ class UpdateService:
             staging = Path(tempfile.mkdtemp(prefix="ArabicLens-", dir=base))
         except OSError as exc:
             raise UpdateError("Could not save the update. Check free disk space.") from exc
-        partial = staging / (INSTALLER_NAME + ".part")
-        final = staging / INSTALLER_NAME
+        partial = staging / (info.asset_name + ".part")
+        final = staging / info.asset_name
         digest = hashlib.sha256()
         received = 0
         try:
@@ -270,10 +281,12 @@ class UpdateService:
             if not secrets.compare_digest(digest.hexdigest(), info.sha256.lower()):
                 raise UpdateError("The installer download failed its checksum check.")
             with partial.open("rb") as installed_file:
-                if installed_file.read(2) != b"MZ":
+                signature = b'MZ' if info.asset_name == INSTALLER_NAME else b'PK'
+                if installed_file.read(2) != signature:
                     raise UpdateError("The downloaded file is not a Windows installer.")
             partial.replace(final)
             self._verified_paths[final.resolve()] = info.sha256.lower()
+            self._verified_versions[final.resolve()] = info.version
             return final
         except (httpx.HTTPError, OSError) as exc:
             raise UpdateError("Could not download the update. Try again later.") from exc
@@ -288,11 +301,11 @@ class UpdateService:
                 except OSError:
                     pass
 
-    def launch_installer(self, path: Path) -> subprocess.Popen:
+    def launch_installer(self, path: Path, *, executable=None, data_directory=None) -> subprocess.Popen:
         """Start a verified Inno installer; the caller should then quit the app."""
         candidate = Path(path).resolve()
         expected = self._verified_paths.get(candidate)
-        if expected is None or candidate.name != INSTALLER_NAME or not candidate.is_file():
+        if expected is None or not candidate.is_file():
             raise UpdateError("The installer was not verified. Download it again.")
         try:
             digest = hashlib.sha256()
@@ -301,8 +314,14 @@ class UpdateService:
                     digest.update(chunk)
             if not secrets.compare_digest(digest.hexdigest(), expected):
                 raise UpdateError("The installer changed after download. Download it again.")
+            if candidate.suffix == '.zip':
+                from .file_update import launch_file_update
+                return launch_file_update(candidate, executable, data_directory, self.current_version,
+                                          self._verified_versions[candidate])
+            if candidate.name != INSTALLER_NAME:
+                raise UpdateError('The update package name is invalid.')
             return subprocess.Popen([
-                str(candidate), "/SILENT", "/NORESTART", "/CLOSEAPPLICATIONS",
+                str(candidate), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CLOSEAPPLICATIONS",
             ], close_fds=True)
         except OSError as exc:
             raise UpdateError("Could not start the installer. Try again later.") from exc

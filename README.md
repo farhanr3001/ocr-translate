@@ -44,7 +44,11 @@ The portable ZIP remains useful for development or running without installation.
 
 The installed app can check public GitHub Releases in the background. When a newer
 published version is found, it offers **Download update**; accepting downloads a verified
-installer, installs it, and reopens Arabic Lens. A tray notification leads to the prompt
+file update, applies it quietly, and reopens Arabic Lens. From version 0.1.2 onward,
+updates prefer a small package containing changed application files; unchanged model/runtime
+files stay in place. A full app-file package is a fallback when a matching delta is unavailable.
+Older versions need one compatibility installer update to acquire this updater.
+A tray notification leads to the prompt
 when Settings is closed. Checking is optional in General settings, and downloads do not
 start without consent. Settings, cache and history stay in `%LOCALAPPDATA%\ArabicLens`
 across updates. A code change on the developer's PC reaches another laptop only after

@@ -57,9 +57,53 @@ Name: "{userdesktop}\Arabic Lens"; Filename: "{app}\ArabicLens.exe"; WorkingDir:
 ; Initial interactive installation offers to open Settings. Silent updates reopen
 ; the tray utility minimized after files have finished replacing.
 Filename: "{app}\ArabicLens.exe"; Description: "Open Arabic Lens"; Flags: postinstall nowait skipifsilent runasoriginaluser; Check: ShouldLaunch
-Filename: "{app}\ArabicLens.exe"; Parameters: "--minimized"; Flags: nowait skipifnotsilent runasoriginaluser; Check: ShouldLaunch
+Filename: "{app}\ArabicLens.exe"; Flags: nowait skipifnotsilent runasoriginaluser; Check: ShouldLaunch
 
 [Code]
+function HideNativeWindow(hWnd: HWND; nCmdShow: Integer): Boolean;
+  external 'ShowWindow@user32.dll stdcall';
+function NativeWindowStyle(hWnd: HWND; Index: Integer): Longint;
+  external 'GetWindowLongW@user32.dll stdcall';
+function SetNativeWindowStyle(hWnd: HWND; Index, Value: Longint): Longint;
+  external 'SetWindowLongW@user32.dll stdcall';
+function SetWindowAlpha(hWnd: HWND; ColorKey: Longint; Alpha: Byte; Flags: Longint): Boolean;
+  external 'SetLayeredWindowAttributes@user32.dll stdcall';
+
+procedure HideSilentWizard(Sender: TObject);
+begin
+  if WizardSilent then
+    HideNativeWindow(WizardForm.Handle, 0);
+end;
+
+procedure InitializeWizard;
+begin
+  { Older clients use /SILENT, which normally shows a progress window.
+    Keep that one-time compatibility upgrade hidden as well. }
+  if WizardSilent then
+  begin
+    { Inno can re-show its native progress form after script Hide calls.
+      Make legacy silent updates transparent and absent from the taskbar
+      before that form can first be shown. /VERYSILENT remains preferred. }
+    SetNativeWindowStyle(WizardForm.Handle, -20,
+      (NativeWindowStyle(WizardForm.Handle, -20) or $00080080 or $08000000) and not $00040000);
+    SetWindowAlpha(WizardForm.Handle, 0, 0, 2);
+    WizardForm.OnShow := @HideSilentWizard;
+    HideSilentWizard(WizardForm);
+  end;
+end;
+
+procedure CurInstallProgressChanged(CurProgress, MaxProgress: Integer);
+begin
+  if WizardSilent then
+    WizardForm.Hide;
+end;
+
+procedure CurPageChanged(CurPageID: Integer);
+begin
+  if WizardSilent then
+    WizardForm.Hide;
+end;
+
 function ShouldLaunch: Boolean;
 var
   Index: Integer;
