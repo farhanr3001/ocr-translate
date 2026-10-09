@@ -21,7 +21,7 @@ foreach ($package in $packages) {
         try { $manifest = $reader.ReadToEnd() | ConvertFrom-Json } finally { $reader.Dispose() }
         if ($manifest.version -ne $version) { throw 'Stale update package in dist; do not publish it.' }
     } finally { $archive.Dispose() }
-    $files += @($package.FullName, $package.FullName + '.sha256')
+    $files += @($package.FullName, ($package.FullName + '.sha256'))
 }
 foreach ($file in $files | Where-Object { -not $_.EndsWith('.sha256') }) {
     $expected = (Get-Content -LiteralPath ($file + '.sha256') -Raw).Split()[0]
@@ -36,7 +36,13 @@ $api = "https://api.github.com/repos/$repo/releases"
 $commit = (git rev-parse HEAD).Trim()
 try {
     try {
-        $release = Invoke-RestMethod -Uri "$api/tags/$tag" -Headers $headers
+        $allReleases = Invoke-RestMethod -Uri ($api+'?per_page=100') -Headers $headers
+        $matching = @($allReleases | Where-Object tag_name -eq $tag)
+        if ($matching.Count -gt 1) { throw 'Multiple matching drafts exist; inspect before continuing.' }
+        if ($matching.Count -eq 0) {
+            $body = @{tag_name=$tag;target_commitish=$commit;name="Arabic Lens $version";body=(Get-Content -LiteralPath $NotesFile -Raw);draft=$true;prerelease=$false} | ConvertTo-Json
+            $release = Invoke-RestMethod -Method Post -Uri $api -Headers $headers -ContentType 'application/json' -Body $body
+        } else { $release = $matching[0] }
         if (-not $release.draft) { throw 'Never overwrite a published release.' }
     } catch {
         if ($_.Exception.Response.StatusCode.value__ -ne 404) { throw }
@@ -61,7 +67,8 @@ try {
     }
     $release = Invoke-RestMethod -Uri ($api+'/'+$release.id) -Headers $headers
     if ($release.assets.Count -ne $files.Count) { throw 'Unexpected release assets.' }
-    $published = Invoke-RestMethod -Method Patch -Uri ($api+'/'+$release.id) -Headers $headers -ContentType 'application/json' -Body '{"draft":false}'
+    $publishBody = @{draft=$false;target_commitish=$commit} | ConvertTo-Json
+    $published = Invoke-RestMethod -Method Patch -Uri ($api+'/'+$release.id) -Headers $headers -ContentType 'application/json' -Body $publishBody
     @{url=$published.html_url;commit=$commit;tag=$tag;assets=$files.Count} | ConvertTo-Json | Set-Content ("artifacts/publication-$version.json")
     Write-Output ('Published: '+$published.html_url)
 } finally {
