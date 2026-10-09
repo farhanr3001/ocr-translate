@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+.pytest_cache/
+build/
+dist/
+*.log
+*.db*
+settings.json
+artifacts/
+*.py[cod]
+*.tmp
+*.part
+# Retired local model experiments are not used by the shipped application.
+arabic_lens/data/translation/
+arabic_lens/data/offline-en-ar/

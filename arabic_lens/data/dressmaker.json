@@ -1,0 +1,850 @@
+{
+  "id": "dressmaker-steam-4019220-v9",
+  "source": "https://store.steampowered.com/app/4019220/Dressmaker/",
+  "scope": "Reviewed readable text in eight official Steam screenshots and the official gameplay trailer; not a complete game script.",
+  "entries": [
+    {
+      "english": "Oh, how wonderful. This is MY dress, exactly as I wanted it.",
+      "arabic": "يا له من جمال! هذا فستاني، تمامًا كما أردته.",
+      "evidence": "steam-00.jpg"
+    },
+    {
+      "english": "I'm hosting a garden party at the family cottage, but most of my dresses have paint stains. Can you make me something cute and full of life? My budget is 800.",
+      "arabic": "سأقيم حفلة في حديقة كوخ العائلة، لكن معظم فساتيني ملطخة بالطلاء. هل يمكنك صنع فستان لطيف ومفعم بالحيوية لي؟ ميزانيتي 800.",
+      "evidence": "steam-02.jpg",
+      "ocr_aliases": [
+        "I'm hosting a garden party at e family cottage, but most of dresses have paint stains. Can you make me something cute and full of Life? My budget is e 800.",
+        "I'm hosting a garden party at family cottage, but most of dresses have paint stains. Can you make me something cute and full of Life? My budget is e 800.",
+        "I'm hosting a garden party at e family cottage, but most of dresses have paint stains. Can you make me something cute and full of life? My budget is 800."
+      ]
+    },
+    {
+      "english": "You may add accessories, or click below when the dress is finished.",
+      "arabic": "يمكنك إضافة إكسسوارات، أو النقر أدناه عند الانتهاء من الفستان.",
+      "evidence": "steam-05.jpg"
+    },
+    {
+      "english": "SEWING COMPLETE",
+      "arabic": "اكتملت الخياطة",
+      "evidence": "steam-05.jpg"
+    },
+    {
+      "english": "Finish Dress",
+      "arabic": "إنهاء الفستان",
+      "evidence": "steam-05.jpg"
+    },
+    {
+      "english": "SEWING COMPLETE\nYou may add accessories, or click below when the dress is finished.\nFinish Dress",
+      "arabic": "اكتملت الخياطة\nيمكنك إضافة إكسسوارات، أو النقر أدناه عند الانتهاء من الفستان.\nإنهاء الفستان",
+      "evidence": "steam-05.jpg"
+    },
+    {
+      "english": "Dress Complete!",
+      "arabic": "اكتمل الفستان!",
+      "evidence": "steam-07.jpg"
+    },
+    {
+      "english": "Complete Commission",
+      "arabic": "إتمام الطلب",
+      "evidence": "steam-07.jpg"
+    },
+    {
+      "english": "Keep working",
+      "arabic": "مواصلة العمل",
+      "evidence": "steam-07.jpg"
+    },
+    {
+      "english": "Sell dress (869)",
+      "arabic": "بيع الفستان (869)",
+      "evidence": "steam-07.jpg",
+      "ocr_aliases": [
+        "sell dress( 869)"
+      ]
+    },
+    {
+      "english": "Dress Complete! Complete Commission Keep working sell dress( 869)",
+      "arabic": "اكتمل الفستان!\nإتمام الطلب · مواصلة العمل · بيع الفستان (869)",
+      "evidence": "steam-07.jpg"
+    },
+    {
+      "english": "Use only black",
+      "arabic": "استخدم اللون الأسود فقط",
+      "evidence": "steam-03.jpg"
+    },
+    {
+      "english": "Off rack dress (RepeatingQuest) An off-the-rack dress.",
+      "arabic": "فستان جاهز (طلب متكرر)\nفستان جاهز للارتداء.",
+      "evidence": "trailer/frame-025.jpg"
+    },
+    {
+      "english": "An off-the-rack dress.",
+      "arabic": "فستان جاهز للارتداء.",
+      "evidence": "trailer/frame-025.jpg"
+    },
+    {
+      "english": "Draft Pattern",
+      "arabic": "إعداد الباترون",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "Approx. 3.85m fabric required",
+      "arabic": "يلزم نحو 3.85 متر من القماش",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "Approx. 3.85m fabric required Draft Pattern Export Import",
+      "arabic": "يلزم نحو 3.85 متر من القماش\nإعداد الباترون · تصدير · استيراد",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "Milkmaid Bodice",
+      "arabic": "صدر فستان بطراز ريفي",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "Fae Sleeve",
+      "arabic": "كم بطراز خيالي",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "Single Tiered Skirt",
+      "arabic": "تنورة بطبقة واحدة",
+      "evidence": "steam-02.jpg",
+      "ocr_aliases": [
+        "Singte Tiered Skirt"
+      ]
+    },
+    {
+      "english": "Bustier Bodice",
+      "arabic": "صدر فستان بطراز البوستييه",
+      "evidence": "trailer/frame-025.jpg"
+    },
+    {
+      "english": "Angel Sleeve",
+      "arabic": "كم واسع متدلٍّ",
+      "evidence": "trailer/frame-025.jpg"
+    },
+    {
+      "english": "Odette Skirt",
+      "arabic": "تنورة أوديت",
+      "evidence": "trailer/frame-025.jpg"
+    },
+    {
+      "english": "No Collar",
+      "arabic": "بدون ياقة",
+      "evidence": "trailer/frame-025.jpg"
+    },
+    {
+      "english": "Angel Sleeve Odette Skirt",
+      "arabic": "كم واسع متدلٍّ · تنورة أوديت",
+      "evidence": "trailer/frame-026.jpg"
+    },
+    {
+      "english": "Dusty Pink Silk",
+      "arabic": "حرير وردي مطفأ",
+      "evidence": "steam-03.jpg"
+    },
+    {
+      "english": "Strawberry Fields Simple Cotton (10.0m)",
+      "arabic": "حقول الفراولة — قطن بسيط (10 أمتار)",
+      "evidence": "steam-04.jpg"
+    },
+    {
+      "english": "Change Speed",
+      "arabic": "تغيير السرعة",
+      "evidence": "steam-06.jpg"
+    },
+    {
+      "english": "Rotate",
+      "arabic": "تدوير",
+      "evidence": "steam-06.jpg"
+    },
+    {
+      "english": "Sew",
+      "arabic": "خياطة",
+      "evidence": "steam-06.jpg"
+    },
+    {
+      "english": "Send to inventory",
+      "arabic": "نقل إلى المخزون",
+      "evidence": "trailer/frame-035.jpg"
+    },
+    {
+      "english": "New Stock!",
+      "arabic": "بضاعة جديدة!",
+      "evidence": "trailer/frame-050.jpg"
+    },
+    {
+      "english": "Requirements",
+      "arabic": "المتطلبات",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "Requirements Quality: 70 Flowers: 60 Cute: 30 Romantic: 45",
+      "arabic": "المتطلبات\nالجودة: 70\nالزهور: 60\nلطيف: 30\nرومانسي: 45",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "Accessories",
+      "arabic": "إكسسوارات",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "Fabric",
+      "arabic": "قماش",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "Fabric Accessories",
+      "arabic": "قماش · إكسسوارات",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "Casual 73 cool 65 Cute 62 Profession 55 Simple 54 Patterned 50 Elaborate 31",
+      "arabic": "غير رسمي 73 · بارد 65 · لطيف 62\nمهني 55 · بسيط 54\nمنقوش 50 · مزخرف 31",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "Daywear 92 Playful 57",
+      "arabic": "نهاري 92 · مرح 57",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "Flowers 50 Workwear 25 Romantic 22 Elegant 20 Gothic 11 Warm 10 Risque 5",
+      "arabic": "زهور 50 · ملابس عمل 25 · رومانسي 22\nأنيق 20 · قوطي 11 · دافئ 10 · جريء 5",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "Quality: 70 Flowers: 60 Cute: 30 Romantic: 45",
+      "arabic": "الجودة: 70\nالزهور: 60\nلطيف: 30\nرومانسي: 45",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "Quality: 70 Flowers: 60 Cute: 30 Romantic: 45",
+      "arabic": "الجودة: 70\nالزهور: 60\nلطيف: 30\nرومانسي: 45",
+      "evidence": "steam-02.jpg",
+      "ocr_aliases": [
+        "Quality: 70 Flowers: 60 Cute:30 Romantic: 45"
+      ]
+    },
+    {
+      "english": "Double Ruffle and Bow Collar",
+      "arabic": "ياقة بكشكش مزدوج وفيونكة",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "Milkmaid Bodice Double Ruffle and Bow Collar",
+      "arabic": "صدر فستان بطراز ريفي\nياقة بكشكش مزدوج وفيونكة",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "Casual 73 cool 65 Cute 62 Profession 55 Simple 54 Patterned 50 Elaborate 31 Daywear 92 Playful 57 Flowers 50 Workwear 25 Romantic 22 Elegant 20 Gothic 11 Warm 10 Risque 5",
+      "arabic": "غير رسمي 73 · بارد 65 · لطيف 62\nمهني 55 · بسيط 54 · منقوش 50 · مزخرف 31\nنهاري 92 · مرح 57 · زهور 50\nملابس عمل 25 · رومانسي 22 · أنيق 20\nقوطي 11 · دافئ 10 · جريء 5",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "Light Colour (1/6) Viewfinder: Off",
+      "arabic": "لون الإضاءة (1/6)\nمحدد المنظر: مغلق",
+      "evidence": "steam-01.jpg"
+    },
+    {
+      "english": "Environment (1/6) Light",
+      "arabic": "البيئة (1/6) · الإضاءة",
+      "evidence": "steam-07.jpg"
+    },
+    {
+      "english": "Light Colour (2/6) Viewfinder: On",
+      "arabic": "لون الإضاءة (2/6)\nمحدد المنظر: مفعّل",
+      "evidence": "steam-07.jpg",
+      "ocr_aliases": [
+        "Light Colour (2/6) ) Viewfinder: On"
+      ]
+    },
+    {
+      "english": "Daywear 92",
+      "arabic": "نهاري 92",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "Casual 73",
+      "arabic": "غير رسمي 73",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "cool 65",
+      "arabic": "بارد 65",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "Cute 62",
+      "arabic": "لطيف 62",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "Playful 57",
+      "arabic": "مرح 57",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "Profession 55",
+      "arabic": "مهني 55",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "Simple 54",
+      "arabic": "بسيط 54",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "Flowers 50",
+      "arabic": "زهور 50",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "Patterned 50",
+      "arabic": "منقوش 50",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "Elaborate 31",
+      "arabic": "مزخرف 31",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "Workwear 25",
+      "arabic": "ملابس عمل 25",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "Romantic 22",
+      "arabic": "رومانسي 22",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "Elegant 20",
+      "arabic": "أنيق 20",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "Gothic 11",
+      "arabic": "قوطي 11",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "Warm 10",
+      "arabic": "دافئ 10",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "Risque 5",
+      "arabic": "جريء 5",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "Quality: 70",
+      "arabic": "الجودة: 70",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "Flowers: 60",
+      "arabic": "الزهور: 60",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "Cute: 30",
+      "arabic": "لطيف: 30",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "Romantic: 45",
+      "arabic": "رومانسي: 45",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "Daywear",
+      "arabic": "نهاري",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "Casual",
+      "arabic": "غير رسمي",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "Cool",
+      "arabic": "بارد",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "Cute",
+      "arabic": "لطيف",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "Playful",
+      "arabic": "مرح",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "Profession",
+      "arabic": "مهني",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "Simple",
+      "arabic": "بسيط",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "Flowers",
+      "arabic": "زهور",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "Patterned",
+      "arabic": "منقوش",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "Elaborate",
+      "arabic": "مزخرف",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "Workwear",
+      "arabic": "ملابس عمل",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "Romantic",
+      "arabic": "رومانسي",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "Elegant",
+      "arabic": "أنيق",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "Gothic",
+      "arabic": "قوطي",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "Warm",
+      "arabic": "دافئ",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "Risque",
+      "arabic": "جريء",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "Quality:",
+      "arabic": "الجودة:",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "Flowers:",
+      "arabic": "الزهور:",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "Cute:",
+      "arabic": "لطيف:",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "Romantic:",
+      "arabic": "رومانسي:",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "Export",
+      "arabic": "تصدير",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "Import",
+      "arabic": "استيراد",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "Prudence",
+      "arabic": "برودنس",
+      "evidence": "steam-00.jpg"
+    },
+    {
+      "english": "Environment (1/9)",
+      "arabic": "البيئة (1/9)",
+      "evidence": "steam-01.jpg"
+    },
+    {
+      "english": "Light",
+      "arabic": "الإضاءة",
+      "evidence": "steam-01.jpg"
+    },
+    {
+      "english": "Light Colour (1/6)",
+      "arabic": "لون الإضاءة (1/6)",
+      "evidence": "steam-01.jpg"
+    },
+    {
+      "english": "Viewfinder: Off",
+      "arabic": "معاينة الإطار: متوقفة",
+      "evidence": "steam-01.jpg"
+    },
+    {
+      "english": "Take Photo",
+      "arabic": "التقاط صورة",
+      "evidence": "steam-01.jpg"
+    },
+    {
+      "english": "Photo",
+      "arabic": "صورة",
+      "evidence": "steam-01.jpg"
+    },
+    {
+      "english": "Black and Grey",
+      "arabic": "أسود ورمادي",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "Midnight Black",
+      "arabic": "أسود ليلي",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "Midnight Black V...",
+      "arabic": "أسود ليلي…",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "Glacier Blue Silk",
+      "arabic": "حرير أزرق جليدي",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "Aquamarine Blue...",
+      "arabic": "أزرق زبرجدي…",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "Floral Silk Broca...",
+      "arabic": "حرير مزخرف بالورود…",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "Blue Dainty Cont...",
+      "arabic": "أزرق رقيق…",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "Teal Blue Velvet",
+      "arabic": "مخمل أزرق مخضر",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "Diamond Filigree...",
+      "arabic": "زخرفة ماسية…",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "Peacock Crushed...",
+      "arabic": "قماش بلون الطاووس…",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "Steel Blue Cotto...",
+      "arabic": "قطن أزرق فولاذي…",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "Burlap",
+      "arabic": "خيش",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "Paisley Emerald",
+      "arabic": "نقشة بيزلي زمردية",
+      "evidence": "steam-02.jpg"
+    },
+    {
+      "english": "The International Emporium",
+      "arabic": "المتجر العالمي",
+      "evidence": "steam-03.jpg"
+    },
+    {
+      "english": "Emporium",
+      "arabic": "متجر",
+      "evidence": "steam-03.jpg"
+    },
+    {
+      "english": "Formal",
+      "arabic": "رسمي",
+      "evidence": "steam-03.jpg"
+    },
+    {
+      "english": "Professional",
+      "arabic": "مهني",
+      "evidence": "steam-03.jpg"
+    },
+    {
+      "english": "Fabrics",
+      "arabic": "أقمشة",
+      "evidence": "steam-03.jpg"
+    },
+    {
+      "english": "Silk",
+      "arabic": "حرير",
+      "evidence": "steam-03.jpg"
+    },
+    {
+      "english": "Pink",
+      "arabic": "وردي",
+      "evidence": "steam-03.jpg"
+    },
+    {
+      "english": "Glamour",
+      "arabic": "جاذبية",
+      "evidence": "steam-03.jpg"
+    },
+    {
+      "english": "Eveningwear",
+      "arabic": "ملابس سهرة",
+      "evidence": "steam-03.jpg"
+    },
+    {
+      "english": "metres",
+      "arabic": "أمتار",
+      "evidence": "steam-03.jpg"
+    },
+    {
+      "english": "Charcoal Grey Co...",
+      "arabic": "رمادي فحمي…",
+      "evidence": "steam-03.jpg"
+    },
+    {
+      "english": "Cool Grey Linen",
+      "arabic": "كتان رمادي بارد",
+      "evidence": "steam-03.jpg"
+    },
+    {
+      "english": "Barbara Pink Silk",
+      "arabic": "حرير باربرا الوردي",
+      "evidence": "steam-03.jpg"
+    },
+    {
+      "english": "Cool Blush Silk",
+      "arabic": "حرير وردي بارد",
+      "evidence": "steam-03.jpg"
+    },
+    {
+      "english": "Champagne Whit...",
+      "arabic": "أبيض شامبانيا…",
+      "evidence": "steam-03.jpg"
+    },
+    {
+      "english": "Paisley Plum Silk...",
+      "arabic": "حرير بيزلي بلون البرقوق…",
+      "evidence": "steam-03.jpg"
+    },
+    {
+      "english": "Grain Quality: 100%",
+      "arabic": "جودة اتجاه النسيج: 100%",
+      "evidence": "steam-04.jpg"
+    },
+    {
+      "english": "Cotton",
+      "arabic": "قطن",
+      "evidence": "steam-04.jpg"
+    },
+    {
+      "english": "Patterns",
+      "arabic": "أنماط القص",
+      "evidence": "steam-04.jpg"
+    },
+    {
+      "english": "Space",
+      "arabic": "مسافة",
+      "evidence": "steam-06.jpg"
+    },
+    {
+      "english": "Photo Preview",
+      "arabic": "معاينة الصورة",
+      "evidence": "steam-07.jpg"
+    },
+    {
+      "english": "Environment (1/6)",
+      "arabic": "البيئة (1/6)",
+      "evidence": "steam-07.jpg"
+    },
+    {
+      "english": "Light Colour (2/6)",
+      "arabic": "لون الإضاءة (2/6)",
+      "evidence": "steam-07.jpg"
+    },
+    {
+      "english": "Viewfinder: On",
+      "arabic": "معاينة الإطار: مفعلة",
+      "evidence": "steam-07.jpg"
+    },
+    {
+      "english": "Sewing Complete!",
+      "arabic": "اكتملت الخياطة!",
+      "evidence": "trailer/frame-003.jpg"
+    },
+    {
+      "english": "Zoom out/orbit (hold)",
+      "arabic": "تصغير أو تدوير العرض (اضغط مطولًا)",
+      "evidence": "trailer/frame-003.jpg"
+    },
+    {
+      "english": "Pan Camera",
+      "arabic": "تحريك الكاميرا",
+      "evidence": "trailer/frame-003.jpg"
+    },
+    {
+      "english": "Camera",
+      "arabic": "الكاميرا",
+      "evidence": "trailer/frame-003.jpg"
+    },
+    {
+      "english": "Zoom",
+      "arabic": "تكبير العرض",
+      "evidence": "trailer/frame-003.jpg"
+    },
+    {
+      "english": "Add Point",
+      "arabic": "إضافة نقطة",
+      "evidence": "trailer/frame-004.jpg"
+    },
+    {
+      "english": "Place",
+      "arabic": "وضع",
+      "evidence": "trailer/frame-004.jpg"
+    },
+    {
+      "english": "Finish",
+      "arabic": "إنهاء",
+      "evidence": "trailer/frame-004.jpg"
+    },
+    {
+      "english": "Photo Mode",
+      "arabic": "وضع التصوير",
+      "evidence": "trailer/frame-020.jpg"
+    },
+    {
+      "english": "Light Colour (4/6)",
+      "arabic": "لون الإضاءة (4/6)",
+      "evidence": "trailer/frame-020.jpg"
+    },
+    {
+      "english": "Avoid: Black",
+      "arabic": "تجنب اللون الأسود",
+      "evidence": "trailer/frame-021.jpg"
+    },
+    {
+      "english": "Off rack dress (RepeatingQuest)",
+      "arabic": "فستان جاهز (طلب متكرر)",
+      "evidence": "trailer/frame-025.jpg"
+    },
+    {
+      "english": "Eclectic",
+      "arabic": "متنوع الأساليب",
+      "evidence": "trailer/frame-025.jpg"
+    },
+    {
+      "english": "Shimmering",
+      "arabic": "لامع",
+      "evidence": "trailer/frame-025.jpg"
+    },
+    {
+      "english": "Uncomfortable",
+      "arabic": "غير مريح",
+      "evidence": "trailer/frame-025.jpg"
+    },
+    {
+      "english": "Black Cotton",
+      "arabic": "قطن أسود",
+      "evidence": "trailer/frame-026.jpg"
+    },
+    {
+      "english": "Mica Sequin",
+      "arabic": "ترتر ميكا",
+      "evidence": "trailer/frame-033.jpg"
+    },
+    {
+      "english": "Mica Sequin (10.0m)",
+      "arabic": "ترتر ميكا (10.0m)",
+      "evidence": "trailer/frame-033.jpg"
+    },
+    {
+      "english": "This will not do.",
+      "arabic": "هذا غير مقبول.",
+      "evidence": "trailer/frame-047.jpg"
+    },
+    {
+      "english": "Materials",
+      "arabic": "المواد",
+      "evidence": "trailer/frame-051.jpg"
+    },
+    {
+      "english": "Labour",
+      "arabic": "أجرة العمل",
+      "evidence": "trailer/frame-051.jpg"
+    },
+    {
+      "english": "Quality Bonus (%)",
+      "arabic": "مكافأة الجودة (%)",
+      "evidence": "trailer/frame-051.jpg"
+    },
+    {
+      "english": "Prestige Bonus (%)",
+      "arabic": "مكافأة المكانة (%)",
+      "evidence": "trailer/frame-051.jpg"
+    },
+    {
+      "english": "Sell Price",
+      "arabic": "سعر البيع",
+      "evidence": "trailer/frame-051.jpg"
+    },
+    {
+      "english": "Sell",
+      "arabic": "بيع",
+      "evidence": "trailer/frame-051.jpg"
+    },
+    {
+      "english": "Apprentice",
+      "arabic": "متدرب",
+      "evidence": "trailer/frame-051.jpg"
+    },
+    {
+      "english": "Novice",
+      "arabic": "مبتدئ",
+      "evidence": "trailer/frame-051.jpg"
+    },
+    {
+      "english": "Environment (4/12)",
+      "arabic": "البيئة (4/12)",
+      "evidence": "trailer/frame-051.jpg"
+    },
+    {
+      "english": "Light Colour (1/9)",
+      "arabic": "لون الإضاءة (1/9)",
+      "evidence": "trailer/frame-051.jpg"
+    },
+    {
+      "english": "Out now",
+      "arabic": "متاحة الآن",
+      "evidence": "trailer/frame-058.jpg"
+    },
+    {
+      "english": "On Steam",
+      "arabic": "على ستيم",
+      "evidence": "trailer/frame-060.jpg"
+    }
+  ],
+  "reviewed_fixture_count": 70
+}

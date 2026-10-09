@@ -1,0 +1,27 @@
+{
+  "id": "hplt-en-ar-int8-v1",
+  "repository": "HPLT/translate-en-ar-v1.0-hplt_opus",
+  "revision": "66fc22dc4ee77aeb1cfd186cfdb6bd658bba36bd",
+  "license": "CC-BY-4.0",
+  "conversion": "CTranslate2 int8, CPU",
+  "files": [
+    {
+      "file": "model.npz.best-chrf.npz",
+      "url": "https://huggingface.co/HPLT/translate-en-ar-v1.0-hplt_opus/resolve/66fc22dc4ee77aeb1cfd186cfdb6bd658bba36bd/model.npz.best-chrf.npz",
+      "sha256": "ac2b1521a1c58914307ade951b2be1ab05dca8dcb9c1216dbb008c38e218dc52",
+      "bytes": 307935566
+    },
+    {
+      "file": "model.en-ar.spm",
+      "url": "https://huggingface.co/HPLT/translate-en-ar-v1.0-hplt_opus/resolve/66fc22dc4ee77aeb1cfd186cfdb6bd658bba36bd/model.en-ar.spm",
+      "sha256": "d2130dca443b31d44dbdfa8e9c80c66f44e9bf5bdc085ad3c73f5da0c248d71a",
+      "bytes": 1509628
+    },
+    {
+      "file": "README.md",
+      "url": "https://huggingface.co/HPLT/translate-en-ar-v1.0-hplt_opus/resolve/66fc22dc4ee77aeb1cfd186cfdb6bd658bba36bd/README.md",
+      "sha256": "d95d5d62d0cde1d234d9f80a27800cb12c86b43f6f0367c8b3a22c5eed6674b0",
+      "bytes": 3238
+    }
+  ]
+}
