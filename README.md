@@ -60,7 +60,7 @@ Configured providers are preserved on upgrade; unconfigured
 older installations switch to built-in translation automatically. External services
 may charge for requests. Only recognized text is sent to them, never screenshots.
 Built-in translation sends nothing. The window uses a themed title bar with normal
-dragging, maximize/restore, minimize and close-to-tray controls, plus a resize grip.
+dragging, maximize/restore, minimize and close-to-tray controls, plus resizing from every edge and corner.
 
 | Shortcut | Action |
 | --- | --- |

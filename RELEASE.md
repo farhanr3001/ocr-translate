@@ -6,6 +6,8 @@ The installer source is [installer/ArabicLens.iss](installer/ArabicLens.iss). It
 
 ## Build a release
 
+Every completed app change must reach installed users: increment the version, test and publish the new installer/checksum, push its source, and verify the public feed with the previous installed version. A local dist replacement or source push alone is insufficient. This is the user's standing authorized workflow.
+
 1. Change `APP_VERSION` in `arabic_lens/version.py` to the new numeric version, for example `0.2.0`. Update the two text version fields and both four-number tuples in `assets/version.txt`, plus `assemblyIdentity` in `assets/app.manifest` to `0.2.0.0`. `Build-Installer.ps1` rejects inconsistent source, resource, manifest or frozen EXE versions. The compiled EXE must already contain the new version before the installer is built.
 2. Run the appropriate subsystem tests, then the full suite: `.\.venv\Scripts\python.exe -m pytest -q --disable-warnings`. Read [DEVELOPER_README.md](DEVELOPER_README.md) for native capture tests and fixture limitations. Preserve a separate record of any skipped/blocked checks.
 3. Build the app in a staged directory to avoid replacing the running developer copy:
@@ -52,3 +54,5 @@ The first installer built from the prior 0.1.0 frozen application was **152.1 Mi
 The updater-enabled installer is **152.2 MiB**, SHA-256 `a32ead8efa67d874b6e295d2e5a5b17422c186b4f6f4f68158849889cd58e2ff`, published with its checksum at [v0.1.0](https://github.com/farhanr3001/ocr-translate/releases/tag/v0.1.0). The full regression suite passed 156 tests; two optional video tests skipped because their local fixture was unavailable. The exact final installer passed isolated install, real Arabic translation, running-app reinstall, single automatic reopen, uninstall and user-data preservation. Test evidence is generated locally under `artifacts/installer-final-test`, `artifacts/distribution-final-tests.log` and `artifacts/installer-final-build.log`; these private/generated files are intentionally excluded from Git.
 
 The production updater also checked the real public feed and downloaded/verified this 159,570,169-byte installer. A simulated older installed version found 0.1.0; the current 0.1.0 correctly found no newer release. The developer portable folder and ZIP were replaced with the tested build. Its unpacked payload is approximately 407.6 MiB.
+
+Version 0.1.1 fixes resizing from all edges and corners while retaining the themed title bar. Its installer is 159,556,491 bytes, SHA-256 `52cdd7f5a62d9f7d262bc9b1765b87fbcd3c23c80f6877f6375a58634b6ee84b`. The native regression suite passed 171 tests (two optional video tests skipped); staged translation passed. An isolated upgrade from the actual published 0.1.0 installer to 0.1.1 passed, replaced the running app with exactly one reopened process, and preserved user data through uninstall. Evidence: `artifacts/resize-release-install-test/verification.json`.

@@ -36,6 +36,18 @@ class SettingsWindow(QMainWindow):
     ignore_translation_requested = Signal(str)
     update_requested = Signal()
 
+    def showEvent(self, event):
+        super().showEvent(event)
+        from .window_frame import enable_native_resize
+        enable_native_resize(self)
+
+    def nativeEvent(self, event_type, message):
+        from .window_frame import native_resize_hit
+        hit = native_resize_hit(self, message)
+        if hit is not None:
+            return True, hit
+        return super().nativeEvent(event_type, message)
+
     def __init__(self, settings, localization, store):
         super().__init__()
         self.settings, self.l, self.store = settings, localization, store

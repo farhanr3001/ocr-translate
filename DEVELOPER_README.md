@@ -10,6 +10,8 @@ The intended experience is: English appears, readable Arabic appears in its plac
 
 Treat the directory containing this file as the repository root. The developer's working portable copy is **`dist\ArabicLens\ArabicLens.exe` inside that checkout**. Updating source alone does not update that application. For implementation work, build, verify and replace the portable folder before calling the update delivered. For another laptop, build and test the installer using [RELEASE.md](RELEASE.md). Do not tell this user to extract another archive after replacing their local portable folder yourself.
 
+**Standing delivery requirement (9 October): every completed application update must also increment its version, push the source to GitHub, publish the tested installer and checksum as a newer stable GitHub Release, and verify that the production updater discovers it from the preceding installed version. Updating local `dist` alone is not completion. The user has explicitly authorized this release workflow for future app changes. Preserve existing published assets; use a new version/tag.**
+
 For a new session:
 
 1. Read this document, the user README, and the latest user request. Later user corrections override older feature requests.
@@ -22,6 +24,10 @@ For a new session:
 Check the current Git state before issuing Git operations; the working checkout and published release may differ. The previous desktop OCR baseline was recorded before repository initialization.
 
 ## Current verified baseline
+
+The themed Settings window now uses `window_frame.py` for Windows native resizing: WS_THICKFRAME enables the OS resize loop, WM_NCCALCSIZE preserves the custom client/title area, and WM_NCHITTEST identifies all eight edges/corners using physical screen coordinates and a DPI-scaled border. Maximized/fullscreen windows do not expose resize hits. Preserve this alongside title-bar dragging and controls; the bottom-right QSizeGrip alone is insufficient. `tests/test_window_frame.py` checks real HWND hit-test messages, the native style, all edges/corners, and scaled-border classification.
+
+Resize-fix verification on 9 October: 171 tests passed, two optional video fixtures skipped, two warnings; staged EXE bundled-translation smoke passed and the guarded deployment replaced `dist/ArabicLens` and portable ZIP, restarting minimized. Evidence: `artifacts/window-resize-checklist.md`, `window-resize-regressions.log`, and `window-resize-smoke-final/offline-translation.json`. Native message tests exercised resize hit handling; physical mouse dragging at every edge was not separately recorded.
 
 On 9 October 2026, the full suite passed **156 tests**, with two optional video tests skipped because the supplied local recording was unavailable. Native Windows capture/OCR tests ran in the desktop context. The integration test now yields the Python GIL with `time.sleep` between Qt event pumps; a long `QTest.qWait` could starve the engine thread and manufacture a timeout. Production code was not changed for this test fix.
 
