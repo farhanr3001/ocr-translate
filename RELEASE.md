@@ -31,6 +31,8 @@ Starting with 0.1.2, also build `ArabicLens-Update-PREVIOUS_VERSION.zip` with `t
 
 6. Test the new installer in an isolated directory with a silent install and `/NOLAUNCH`, then run that installed EXE in `--smoke-test` mode with isolated data. Install over the same test directory again to check the stable upgrade identity; uninstall that test copy and confirm its separate test data survives. Use Windows Installed Apps or the generated `unins000.exe`. Do not test by replacing the developer's active `dist\ArabicLens` folder or deleting `%LOCALAPPDATA%\ArabicLens`. When testing the normal silent relaunch, use a separate `LOCALAPPDATA` environment for the test app and setup, and verify the old process exits while exactly one new process starts. In PowerShell, `Start-Process -Wait` can also wait for the app launched by Setup, making a successful install appear hung; use the returned process object's `.WaitForExit(timeout)` and inspect Setup's exit code and log.
 
+   Also dot-source `tools/installer_registration_guard.ps1` and wrap that entire sequence in `Invoke-InstallerTestGuard { ... }`. LOCALAPPDATA isolation does not isolate HKCU uninstall registration; the guard preserves the user's existing installation entry.
+
 The official Inno Setup compiler is available from [jrsoftware.org](https://jrsoftware.org/isdl.php); its [download verification guide](https://jrsoftware.org/isdl-verify.php) explains publisher signatures. The build machine currently uses signed Inno Setup 6.7.3. The resulting Arabic Lens installer itself is **not code-signed** until the project owner signs it with a trusted signing certificate. Do not claim an unsigned file avoids Windows publisher/SmartScreen prompts.
 
 ## Publish an update

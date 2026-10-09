@@ -46,7 +46,14 @@ try {
     $upload = $release.upload_url -replace '\{\?name,label\}$',''
     foreach ($file in $files) {
         $name = [IO.Path]::GetFileName($file)
-        if ($release.assets.name -contains $name) { throw "Draft already contains $name" }
+        $existing = $release.assets | Where-Object name -eq $name | Select-Object -First 1
+        if ($existing) {
+            $expectedHash = 'sha256:' + (Get-FileHash -LiteralPath $file).Hash.ToLowerInvariant()
+            if ($existing.state -eq 'uploaded' -and $existing.size -eq (Get-Item -LiteralPath $file).Length -and $existing.digest -eq $expectedHash) { continue }
+            if ($existing.state -eq 'starter') {
+                Invoke-RestMethod -Method Delete -Uri ($api+'/assets/'+$existing.id) -Headers $headers | Out-Null
+            } else { throw "Draft asset differs from verified file: $name" }
+        }
         $asset = Invoke-RestMethod -Method Post -Uri ($upload+'?name='+[Uri]::EscapeDataString($name)) -Headers $headers -ContentType 'application/octet-stream' -InFile $file
         if ($asset.size -ne (Get-Item -LiteralPath $file).Length) { throw 'Upload size mismatch.' }
         $hash = 'sha256:' + (Get-FileHash -LiteralPath $file).Hash.ToLowerInvariant()
