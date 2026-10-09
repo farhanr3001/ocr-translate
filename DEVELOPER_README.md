@@ -1,6 +1,6 @@
 # Arabic Lens — developer and AI handoff
 
-Last reviewed: **29 September 2026** (installer/update section added; the desktop OCR baseline below remains dated 28 September). This document preserves the product decisions, implementation map, verification workflow and remaining limitations for the next developer or AI assistant. Read it alongside [README.md](README.md). Code and current test results take precedence if this snapshot becomes stale; update this document when behavior changes.
+Last reviewed: **9 October 2026** (installer and public release verified; the desktop OCR baseline below remains dated 28 September). This document preserves the product decisions, implementation map, verification workflow and remaining limitations for the next developer or AI assistant. Read it alongside [README.md](README.md). Code and current test results take precedence if this snapshot becomes stale; update this document when behavior changes.
 
 ## Start here
 
@@ -22,6 +22,10 @@ For a new session:
 Check the current Git state before issuing Git operations; the working checkout and published release may differ. The previous desktop OCR baseline was recorded before repository initialization.
 
 ## Current verified baseline
+
+On 9 October 2026, the full suite passed **156 tests**, with two optional video tests skipped because the supplied local recording was unavailable. Native Windows capture/OCR tests ran in the desktop context. The integration test now yields the Python GIL with `time.sleep` between Qt event pumps; a long `QTest.qWait` could starve the engine thread and manufacture a timeout. Production code was not changed for this test fix.
+
+The final updater-enabled 0.1.0 installer passed isolated installation, installed bundled-model translation, running-app reinstall with exactly one automatic reopen, uninstall, and preservation of separate user data. Its SHA-256 is `a32ead8efa67d874b6e295d2e5a5b17422c186b4f6f4f68158849889cd58e2ff`. Source and installer are published at [v0.1.0](https://github.com/farhanr3001/ocr-translate/releases/tag/v0.1.0). Future versions require a rebuilt installer and a newer published release; a source push alone is not an update.
 
 These are recorded results from the preceding implementation, **not a fresh test run performed for this documentation-only change**. The `artifacts/` evidence directory is ignored by Git because it contains generated screenshots, logs and local test data. Links below resolve in the original developer checkout only; regenerate fixture evidence before making a new public claim.
 

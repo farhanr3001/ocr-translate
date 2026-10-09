@@ -11,6 +11,8 @@ workflow and known limitations. This is a general desktop translator; games are 
 
 ## Start
 
+Download the installer from [GitHub Releases](https://github.com/farhanr3001/ocr-translate/releases/latest).
+
 On another Windows laptop, run `ArabicLens-Setup.exe`, then open **Arabic Lens** from
 the Desktop or Start Menu shortcut. The installer contains the translator and all
 of its support files. For portable use, extract `ArabicLens-Windows-x64.zip` and
