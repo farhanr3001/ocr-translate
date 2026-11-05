@@ -1,6 +1,6 @@
 # Arabic Lens — developer and AI handoff
 
-Last reviewed: **9 October 2026** (installer and public release verified; the desktop OCR baseline below remains dated 28 September). This document preserves the product decisions, implementation map, verification workflow and remaining limitations for the next developer or AI assistant. Read it alongside [README.md](README.md). Code and current test results take precedence if this snapshot becomes stale; update this document when behavior changes.
+Last reviewed: **5 November 2026** (workspace housekeeping; application/release verification below remains dated 9 October and desktop OCR baseline 28 September). This document preserves the product decisions, implementation map, verification workflow and remaining limitations for the next developer or AI assistant. Read it alongside [README.md](README.md). Code and current test results take precedence if this snapshot becomes stale; update this document when behavior changes.
 
 ## Start here
 
@@ -24,6 +24,14 @@ For a new session:
 Check the current Git state before issuing Git operations; the working checkout and published release may differ. The previous desktop OCR baseline was recorded before repository initialization.
 
 ## Current verified baseline
+
+### Workspace storage and cleanup
+
+On 5 November, the checkout was audited for redundant storage. Duplicate test application folders, retired translation/Argos model assets, conversion downloads, old installer/update downloads, PyInstaller work files and rebuildable distribution ZIPs were selected for removal. Small regression reports, screenshots, fixtures, checklists and operational scripts remain. Historical reports are evidence of past runs; deleted test installations and package downloads must be regenerated before re-testing. The live `dist/ArabicLens` folder remains the exact current shipped baseline for the next delta. The latest installer/checksum, active `cpu-en-ar` model, `.venv`, Git history and `artifacts/installer-tools/InnoSetup` compiler are retained.
+
+Use `Cleanup-Workspace.ps1` to preview known disposable targets and inspect `artifacts/cleanup-plan.json`; `-Apply` removes them after containment, link, protected-path and running-app checks. Run cleanup after finished release testing/deployment, not during a build or before generating deltas from the preceding baseline. Keep only the live baseline rather than retaining copies of entire test installations. Build fresh distribution ZIPs for a new release; already published assets remain downloadable from GitHub. Housekeeping changes do not change the installed app and do not require a version bump or new binary release. Cleanup measurements and protected-file verification are recorded under `artifacts/cleanup-*.json`.
+
+Measured result: 9,362,093,713 → 1,818,209,877 bytes (8.72 → 1.69 GiB), with 7.03 GiB reclaimed; artifacts fell to 90,861,702 bytes (~87 MiB). All 374 protected files, including the complete portable baseline, active models, latest installer, compiler and regression fixtures, retained their hashes. The preserved packaged executable passed a fresh real offline translation smoke test (`artifacts/cleanup-verification-smoke/offline-translation.json`). User settings/cache/history outside the checkout were not touched. These are cleanup/smoke checks, not a newly run full regression suite.
 
 Version 0.1.2 introduces app-only file updates. `updates.py` prefers `ArabicLens-Update-<installed-version>.zip`, then `ArabicLens-Update-full.zip`; legacy clients still discover `ArabicLens-Setup.exe`. `file_update.py` validates paths, package/file hashes, target/base versions and baseline files before staging outside the install folder. A hidden PowerShell helper waits for app exit, backs up changed/deleted files, applies them, reopens the app and rolls back on replacement/start failure. Unchanged model/runtime files are excluded from deltas. Full fallback downloads more but avoids Setup. Python source runs cannot apply packaged file updates. Standard per-user/portable folders must be writable.
 
