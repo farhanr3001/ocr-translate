@@ -1,6 +1,6 @@
 # Arabic Lens — developer and AI handoff
 
-Last reviewed: **5 November 2026** (workspace housekeeping; application/release verification below remains dated 9 October and desktop OCR baseline 28 September). This document preserves the product decisions, implementation map, verification workflow and remaining limitations for the next developer or AI assistant. Read it alongside [README.md](README.md). Code and current test results take precedence if this snapshot becomes stale; update this document when behavior changes.
+Last reviewed: **18 November 2026** (selected-area reliability and packaged screen pipeline; earlier release/desktop baselines retain their recorded dates). This document preserves the product decisions, implementation map, verification workflow and remaining limitations for the next developer or AI assistant. Read it alongside [README.md](README.md). Code and current test results take precedence if this snapshot becomes stale; update this document when behavior changes.
 
 ## Start here
 
@@ -24,6 +24,16 @@ For a new session:
 Check the current Git state before issuing Git operations; the working checkout and published release may differ. The previous desktop OCR baseline was recorded before repository initialization.
 
 ## Current verified baseline
+
+### Selected-area reliability, 18 November 2026 (0.1.3)
+
+A remote report from Steam over AnyDesk described no overlay, also confirmed on the physical laptop. The bundled model is present and the typed translator working is evidence against a missing translation model; it does not verify Windows OCR or capture. The exact affected-laptop cause remains unconfirmed without its error/status or logs.
+
+Inspection reproduced an independent selection bug: `schedule_capture` retained the pre-selection foreground HWND even when another window was under the selected rectangle, and tried to restore that old window first. It now resolves the selected window before focus restoration and rebinds the request to it. An initially stale manual source emits `selection_changed` rather than silently returning. Manual errors report to Settings, a temporary unbound notice, and a tray notification when Settings is hidden; an invalid source HWND must not suppress the failure explanation. Normal translation overlays retain source-driven lifetime and capture exclusion.
+
+Native regression `tests/test_native_selection_ownership.py` launches controlled windows in a separate process and exercises real GDI capture, Windows OCR, bundled model and a visible overlay. It closes the unrelated previous window and verifies the selected source/overlay survives. `tests/fixtures/manual_selection_window.py` is its controlled fixture, not game automation. Targeted tests also cover missing-English-OCR errors and stale source notices. Windows OCR remains an OS dependency, separate from the bundled translation model; the local test machine lists ar-SA and en-GB recognizers. Do not describe this as proof that OCR is installed on the affected laptop. WDA_EXCLUDEFROMCAPTURE can also hide overlays from AnyDesk, but the report explicitly confirmed no local overlay, so remote capture exclusion alone was ruled out.
+
+`--smoke-test` now also creates its own English fixture, uses real packaged capture/OCR/translation, verifies a visible Arabic overlay and writes `screen-translation.json`. It no longer treats a successful typed-model test as sufficient. Both `offline-translation.json` and `screen-translation.json` must report success before shipping. This deliberate developer test can briefly show its own fixture/overlay; normal startup is unchanged. Final suite: 189 passed, two optional video skips; the native test initially needed topmost fixture windows and deferred-delete cleanup to avoid occlusion by earlier test windows. The final suite passed after isolating the fixture.
 
 ### Workspace storage and cleanup
 

@@ -779,6 +779,7 @@ class Engine(QObject):
     async def _manual_translate(self, rect, title, source_window=None):
         try:
             if not source_window_current(source_window):
+                self.manual_failed.emit('selection_changed', rect, source_window)
                 return
             self.status.emit("reading")
             image = self.capture.capture(rect).copy()

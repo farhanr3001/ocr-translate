@@ -48,6 +48,7 @@ def test_quick_capture_real_ocr_translation_repeat_cancel_failure_and_recovery(m
     monkeypatch.setattr(app_module.HotkeyManager, 'register', lambda self, values: None)
     monkeypatch.setattr(app_module, 'active_window', lambda: (123, identity[2], 'Fixture'))
     monkeypatch.setattr(app_module, 'window_identity', lambda hwnd: identity)
+    monkeypatch.setattr(app_module, 'window_at_rect', lambda rect: identity)
     monkeypatch.setattr(engine_module, 'source_window_current', lambda source: True)
     monkeypatch.setattr(monitor_module, 'source_window_current', lambda source: True)
     focus_calls = []
@@ -133,3 +134,56 @@ def test_focus_restore_never_steals_focus_from_another_app(monkeypatch):
     monkeypatch.setattr(windows.user32, 'SetForegroundWindow', calls.append)
     assert not windows.restore_capture_focus(identity)
     assert not calls
+
+
+def test_capture_binds_to_selected_window_instead_of_previous_foreground(monkeypatch):
+    from types import SimpleNamespace
+    qt = QApplication.instance() or QApplication([])
+    old = (123, 1, Rect(0, 0, 100, 100))
+    selected = (456, 2, Rect(100, 0, 900, 600))
+    calls = []
+    focused = []
+    fake = SimpleNamespace(capture_request=1, selector=SimpleNamespace(windows=[]),
+        engine=SimpleNamespace(translate_region=lambda *args: calls.append(args)))
+    monkeypatch.setattr(app_module, 'restore_capture_focus', lambda source: focused.append(source) or True)
+    monkeypatch.setattr(app_module, 'window_at_rect', lambda rect: selected)
+    rect = Rect(120, 30, 300, 90)
+    Application.schedule_capture(fake, rect, 'Previous window', old)
+    wait(qt, lambda: bool(calls), seconds=2)
+    assert calls[0][0] == rect and calls[0][2] == selected
+    assert focused == [selected]
+
+
+def test_manual_failure_is_not_hidden_by_invalid_source(monkeypatch):
+    from types import SimpleNamespace
+    from arabic_lens.config import Settings
+    from arabic_lens.localization import LocalizationService
+    notices, messages, balloons = [], [], []
+    fake = SimpleNamespace(l=LocalizationService(Settings()), report=messages.append,
+        show_translation=notices.append, window=SimpleNamespace(isVisible=lambda: False),
+        tray=SimpleNamespace(isVisible=lambda: True, showMessage=lambda *args: balloons.append(args)))
+    Application.manual_failed(fake, 'ocr_language', Rect(10, 20, 400, 100), (123, 1, Rect(0,0,100,100)))
+    assert notices[0].source_window is None and notices[0].notice
+    assert 'English OCR' in messages[0] and balloons
+
+
+def test_stale_manual_source_reports_instead_of_silently_returning(monkeypatch):
+    from types import SimpleNamespace
+    failures = []
+    fake = SimpleNamespace(manual_failed=SimpleNamespace(emit=lambda *args: failures.append(args)))
+    monkeypatch.setattr(engine_module, 'source_window_current', lambda source: False)
+    asyncio.run(engine_module.Engine._manual_translate(fake, Rect(0,0,100,100), '', (123,1,Rect(0,0,100,100))))
+    assert failures[0][0] == 'selection_changed'
+
+
+def test_missing_english_ocr_emits_actionable_manual_failure(monkeypatch):
+    from types import SimpleNamespace
+    failures, reports = [], []
+    def unavailable(): raise RuntimeError('ocr_language')
+    fake = SimpleNamespace(status=SimpleNamespace(emit=lambda *args: None),
+        manual_failed=SimpleNamespace(emit=lambda *args: failures.append(args)),
+        capture=SimpleNamespace(capture=lambda rect: np.zeros((100,300,4), np.uint8)),
+        ocr_lock=asyncio.Lock(), _get_ocr=unavailable, _report=reports.append)
+    monkeypatch.setattr(engine_module, 'source_window_current', lambda source: True)
+    asyncio.run(engine_module.Engine._manual_translate(fake, Rect(0,0,300,100), '', None))
+    assert failures[0][0] == 'ocr_language' and reports

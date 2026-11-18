@@ -1,4 +1,6 @@
 AR = {
+    'Screen translation unavailable': 'تعذرت ترجمة الشاشة',
+    'The selected window moved or closed. Select the text again.': 'تحركت النافذة المحددة أو أُغلقت. حدّد النص مرة أخرى.',
     'Translate as your screen changes': 'ترجمة مع تغيّر محتوى شاشتك',
     'Choose what gets translated on your screen.': 'اختر ما يُترجم على شاشتك.',
     'Make translations fit your screen.': 'اجعل الترجمة تنسجم مع شاشتك.',
@@ -49,6 +51,8 @@ AR = {
 }
 STATUS = {"ready": "Ready", "reading": "Reading text…", "translating": "Translating…", "no_text": "No readable English found. Try a closer selection.", "provider_setup": "Connect a translation provider in Settings.", "timeout": "Translation timed out. Try again.", "rate_limit": "Provider is busy. Translation will retry shortly.", "offline": "Cannot reach your provider. Check your connection.", "translation_failed": "Translation unavailable. Check provider settings.", "capture_failed": "Capture unavailable. Try Borderless Windowed.", "ocr_language": "Install English OCR in Windows language settings."}
 
+
+STATUS['selection_changed'] = 'The selected window moved or closed. Select the text again.'
 
 AR.update({
     'Built-in Arabic translation': 'ترجمة عربية مدمجة',

@@ -99,6 +99,14 @@ OCR/translation failures show a short message near the selected area rather than
 silently leaving you with no result. Changed or disappeared sources invalidate obsolete
 output; changing focus alone does not remove an unchanged translation.
 
+The translation model is bundled; recognizing screen text uses Windows' English OCR
+feature. Typed translation can work even when that Windows feature is missing.
+Quick Capture binds to the application under your selection, including when a remote-control
+toolbar or another window previously had focus. Failed selections display a short notice
+and, while Settings is hidden, a Windows notification. Overlay windows are excluded from
+screen capture to prevent self-recognition, so remote-desktop software may not show
+translations that are visible on the laptop's physical screen.
+
 ## Watch Mode
 
 The main page provides everyday controls. Timing, sensitivity and diagnostics are

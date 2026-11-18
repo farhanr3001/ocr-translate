@@ -635,17 +635,20 @@ class Application:
         def capture(attempt=0):
             if request != self.capture_request or self.selector.windows:
                 return
-            if source and not restore_capture_focus(source):
+            # Resolve the selected pixels before restoring focus. The old
+            # foreground may be a remote-control toolbar or another monitor.
+            revealed = window_at_rect(rect)
+            actual_source, actual_title = revealed or source, title
+            if actual_source and not restore_capture_focus(actual_source):
                 # A closing selector may briefly own focus. Never silently
                 # discard the translation if Windows refuses focus restoration.
                 if attempt < 3:
                     QTimer.singleShot(50, lambda: capture(attempt + 1))
                     return
-            actual_source, actual_title = source, title
             # Bind the OCR to what is actually beneath the selected rectangle.
             # This also handles Alt+Q launched from Settings or the tray.
             revealed = window_at_rect(rect)
-            if revealed and actual_source is None:
+            if revealed:
                 actual_source = revealed
             if not actual_title:
                 active = active_window()
@@ -676,8 +679,15 @@ class Application:
             self.progress.complete(result)
 
     def manual_failed(self, code, rect, source):
-        result = Translation('manual-notice', '', self.l.status(code), rect, source_window=source, notice=True)
+        # A missing/closed source must not suppress the explanation of failure.
+        # Notices are temporary; source-driven lifetime still applies to translations.
+        message = self.l.status(code)
+        self.report(message)
+        result = Translation('manual-notice', '', message, rect, source_window=None, notice=True)
         self.show_translation(result)
+        if not self.window.isVisible() and self.tray.isVisible():
+            self.tray.showMessage(self.l.t('Screen translation unavailable'), message,
+                                  QSystemTrayIcon.Warning, 7000)
 
     def forget_overlay(self, key):
         self.progress.remove(key)
@@ -874,6 +884,47 @@ def run(directory=None, minimized=False, smoke=False):
             import json
             (path / 'offline-translation.json').write_text(json.dumps(
                 {'success': success, 'result': result}, ensure_ascii=False), encoding='utf-8')
-            qt.exit(0 if success else 1)
+            if not success:
+                qt.exit(1)
+                return
+            # Typed translation alone never exercises Windows OCR or the
+            # packaged capture/overlay path. Test those too on our own fixture.
+            from PySide6.QtWidgets import QLabel
+            from .overlay import logical_to_physical
+            app.window.hide()
+            fixture = QLabel('Find the silver needle before sunset.')
+            fixture.setWindowFlags(Qt.Tool | Qt.WindowStaysOnTopHint)
+            fixture.setStyleSheet('background: white; color: #14221e; font: 26px "Segoe UI"; padding: 16px;')
+            area = qt.primaryScreen().availableGeometry()
+            fixture.setGeometry(area.x()+40, area.y()+70, min(760,area.width()-80), 140)
+            fixture.show()
+            app.smoke_fixture = fixture
+            done = [False]
+            def finish(success, **details):
+                if done[0]:
+                    return
+                done[0] = True
+                (path / 'screen-translation.json').write_text(json.dumps(
+                    dict(success=success, **details), ensure_ascii=False), encoding='utf-8')
+                fixture.close()
+                qt.exit(0 if success else 1)
+            def translated(result):
+                if result.id != 'manual':
+                    return
+                def verify():
+                    overlay = app.overlays.windows.get('manual')
+                    visible = bool(overlay and overlay.isVisible() and not overlay.closing)
+                    arabic = any('\u0600' <= char <= '\u06ff' for char in result.arabic)
+                    finish(visible and arabic, recognized=result.source, arabic=result.arabic,
+                           overlay_visible=visible)
+                QTimer.singleShot(100, verify)
+            app.engine.translated.connect(translated)
+            app.engine.manual_failed.connect(lambda code, *_: finish(False, error=code))
+            def capture_fixture():
+                point = fixture.mapToGlobal(fixture.rect().topLeft())
+                rect = logical_to_physical(fixture.screen(), Rect(point.x(), point.y(), fixture.width(),fixture.height()))
+                app.engine.translate_region(rect, 'Packaged screen translation test', None)
+            QTimer.singleShot(200, capture_fixture)
+            QTimer.singleShot(20000, lambda: finish(False, error='screen_test_timeout'))
         QTimer.singleShot(800, screenshot)
     return qt.exec()
