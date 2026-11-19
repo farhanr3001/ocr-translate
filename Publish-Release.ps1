@@ -1,4 +1,4 @@
-param([Parameter(Mandatory=$true)][string]$NotesFile,
+﻿param([Parameter(Mandatory=$true)][string]$NotesFile,
       [Parameter(Mandatory=$true)][string]$VerificationFile)
 $ErrorActionPreference = 'Stop'
 Set-Location -LiteralPath $PSScriptRoot
@@ -28,7 +28,9 @@ foreach ($file in $files | Where-Object { -not $_.EndsWith('.sha256') }) {
     if ((Get-FileHash -LiteralPath $file).Hash.ToLowerInvariant() -ne $expected) { throw 'Asset checksum mismatch.' }
 }
 $env:GIT_TERMINAL_PROMPT = '0'
-$credentialLines = "protocol=https`nhost=github.com`n`n" | git credential fill
+$credentialRequest = Join-Path $env:TEMP ('cred-' + [guid]::NewGuid().ToString('N') + '.txt')
+[IO.File]::WriteAllBytes($credentialRequest, [Text.Encoding]::ASCII.GetBytes("protocol=https`nhost=github.com`n`n"))
+try { $credentialLines = cmd /c "git credential fill < `"$credentialRequest`"" } finally { Remove-Item -LiteralPath $credentialRequest -Force -ErrorAction SilentlyContinue }
 if ($LASTEXITCODE -ne 0) { throw 'GitHub authentication unavailable.' }
 $credentialPassword = ($credentialLines | Where-Object { $_.StartsWith('password=') } | Select-Object -First 1).Substring(9)
 $headers = @{ Authorization="Bearer $credentialPassword"; Accept='application/vnd.github+json'; 'X-GitHub-Api-Version'='2022-11-28'; 'User-Agent'='ArabicLens-Release' }
