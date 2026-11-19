@@ -828,8 +828,14 @@ class Engine(QObject):
                 if key in tracked_keys:
                     anchor = self.anchors.items.get(key)
                     if anchor is None:
-                        continue  # Source changed/scrolled out while translation ran.
-                    physical = anchor.rect
+                        # The tracker lost the text while translation ran. Only
+                        # drop the result if the pixels truly changed; otherwise
+                        # (tracker false alarm) show it where it was selected.
+                        if not self._source_unchanged(rect, image, box):
+                            self.manual_failed.emit('selection_changed', rect, source_window)
+                            continue
+                    else:
+                        physical = anchor.rect
                 result = Translation(key, source, arabic, physical, title, cached, round((time.monotonic() - started) * 1000))
                 result.source_window = source_window
                 if self.settings.overlay.match_game:
@@ -848,6 +854,18 @@ class Engine(QObject):
 
             code = exc.code if isinstance(exc, TranslationError) else ("ocr_language" if str(exc) == "ocr_language" else "capture_failed")
             self.manual_failed.emit(code, rect, source_window)
+
+    def _source_unchanged(self, rect, image, box):
+        """True when the selected text is still pixel-identical on screen."""
+        try:
+            import cv2
+            now = self.capture.capture(rect).copy()
+            def gray(img):
+                crop = img[max(0, box.y):box.bottom, max(0, box.x):box.right]
+                return cv2.cvtColor(crop, cv2.COLOR_BGRA2GRAY if crop.shape[2] == 4 else cv2.COLOR_BGR2GRAY)
+            return bool(VisualAnchors.identical(gray(now), gray(image)))
+        except Exception:
+            return False
 
     def hide(self):
         self._submit(self._hide())

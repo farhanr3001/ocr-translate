@@ -244,9 +244,10 @@ class OverlayManager:
         if a.position == 'Replace':
             overlay.fit_to_source(source, max_extra=0 if result.container else 80)
         if not overlay.capture_excluded:
-            overlay.close()
-            self.report("Capture exclusion is unavailable on this Windows version.")
-            return
+            # Exclusion only keeps the overlay out of screenshots/recordings. Some
+            # Windows builds/drivers refuse it; hiding the translation entirely
+            # was the worst outcome, so still show it and say why.
+            self.report("Capture exclusion is unavailable; overlay may appear in screen capture.")
         occupied = [Rect(w.x(), w.y(), w.width(), w.height()) for w in self.windows.values() if w.isVisible() and not w.closing]
         occupied += [physical_to_logical(r)[1] for r in result.avoid_regions]
         if a.position == 'Replace':

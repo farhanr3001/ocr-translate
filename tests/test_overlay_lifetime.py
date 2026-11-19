@@ -90,3 +90,20 @@ def test_only_held_shortcut_may_operate_overlay_controls(monkeypatch):
     finally:
         manager.clear(immediate=True)
         qt.processEvents()
+
+
+def test_overlay_still_shows_when_capture_exclusion_is_refused(monkeypatch):
+    import arabic_lens.overlay as overlay_module
+
+    qt, manager = _manager(monkeypatch)
+    monkeypatch.setattr(overlay_module, 'exclude_capture', lambda widget: False)
+    messages = []
+    manager.report = messages.append
+    try:
+        manager.show(Translation('manual', 'Hello', 'مرحبا', Rect(100, 100, 240, 45)))
+        qt.processEvents()
+        assert 'manual' in manager.windows and manager.windows['manual'].isVisible()
+        assert messages
+    finally:
+        manager.clear(immediate=True)
+        qt.processEvents()

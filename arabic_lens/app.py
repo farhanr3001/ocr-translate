@@ -677,6 +677,8 @@ class Application:
             else:
                 self.overlays.show(result)
             self.progress.complete(result)
+        elif result.id.startswith('manual') and not result.notice:
+            self.manual_failed('selection_changed', result.rect, None)
 
     def manual_failed(self, code, rect, source):
         # A missing/closed source must not suppress the explanation of failure.
