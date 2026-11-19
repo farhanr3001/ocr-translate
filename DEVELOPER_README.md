@@ -25,6 +25,10 @@ Check the current Git state before issuing Git operations; the working checkout 
 
 ## Current verified baseline
 
+### Silent overlay drops, 19 November 2026 (0.1.4)
+
+Report: a second user's Quick Translate saved the Arabic result to History but showed no overlay. Three silent exits after the history write were fixed: (1) `OverlayManager.show` closed the overlay when `SetWindowDisplayAffinity` was refused; it now shows it and reports the limitation; (2) in `_manual_translate`, a lost visual anchor skipped the result; it now shows it if `_source_unchanged` pixel-check passes, else emits `selection_changed`; (3) `show_translation` now reports a rejected manual result. The exact cause on that machine is still unconfirmed. Suite: 190 passed, 2 skipped; packaged/installed smoke incl. screen pipeline passed; delta 0.1.3 to 0.1.4 (2 files) applied to a copy of the shipped folder and the production updater detected v0.1.4 from 0.1.3 (`artifacts/selection-014-public/verification.json`). An in-place running-app update test was not repeated. `Publish-Release.ps1` was fixed for Windows PowerShell 5.1 (credential request BOM; notes sent as string). Note `artifacts/selection-013-baseline` was empty; `dist/ArabicLens` was the 0.1.3 baseline.
+
 ### Selected-area reliability, 18 November 2026 (0.1.3)
 
 A remote report from Steam over AnyDesk described no overlay, also confirmed on the physical laptop. The bundled model is present and the typed translator working is evidence against a missing translation model; it does not verify Windows OCR or capture. The exact affected-laptop cause remains unconfirmed without its error/status or logs.
