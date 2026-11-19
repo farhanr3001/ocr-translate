@@ -42,13 +42,13 @@ try {
         $matching = @($allReleases | Where-Object tag_name -eq $tag)
         if ($matching.Count -gt 1) { throw 'Multiple matching drafts exist; inspect before continuing.' }
         if ($matching.Count -eq 0) {
-            $body = @{tag_name=$tag;target_commitish=$commit;name="Arabic Lens $version";body=(Get-Content -LiteralPath $NotesFile -Raw);draft=$true;prerelease=$false} | ConvertTo-Json
+            $body = @{tag_name=$tag;target_commitish=$commit;name="Arabic Lens $version";body=[string](Get-Content -LiteralPath $NotesFile -Raw);draft=$true;prerelease=$false} | ConvertTo-Json
             $release = Invoke-RestMethod -Method Post -Uri $api -Headers $headers -ContentType 'application/json' -Body $body
         } else { $release = $matching[0] }
         if (-not $release.draft) { throw 'Never overwrite a published release.' }
     } catch {
         if ($_.Exception.Response.StatusCode.value__ -ne 404) { throw }
-        $body = @{tag_name=$tag;target_commitish=$commit;name="Arabic Lens $version";body=(Get-Content -LiteralPath $NotesFile -Raw);draft=$true;prerelease=$false} | ConvertTo-Json
+        $body = @{tag_name=$tag;target_commitish=$commit;name="Arabic Lens $version";body=[string](Get-Content -LiteralPath $NotesFile -Raw);draft=$true;prerelease=$false} | ConvertTo-Json
         $release = Invoke-RestMethod -Method Post -Uri $api -Headers $headers -ContentType 'application/json' -Body $body
     }
     $upload = $release.upload_url -replace '\{\?name,label\}$',''
