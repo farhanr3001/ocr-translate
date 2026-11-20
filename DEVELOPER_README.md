@@ -25,12 +25,13 @@ Check the current Git state before issuing Git operations; the working checkout 
 
 ## Current verified baseline
 
-### Settings redesign draft, 20 November 2026
+### Settings redesign, 20 November 2026 (0.1.5)
 
 - [x] Tone down the settings surfaces and title bar.
 - [x] Keep the live position preview, presets, placement, and scroll following visible. Put detailed styling and behavior controls behind Advanced tuning.
 - [x] Run the focused UI and appearance tests (5 passed).
-- [ ] Check the reorganized settings visually in both interface languages and verify the installer and updater before release.
+- [x] Review packaged screenshots of Overlay in English and Home in Arabic. The initial Overlay preview can show Below while the Position field is set to Replace. Changing the position refreshes the preview.
+- [x] Publish and verify the installer and updater. The guarded clean install/uninstall passed, including a native screen-to-overlay test. The live 0.1.4 delta test reopened once and preserved data and the model. Production updater discovery, download and payload verification passed. See `artifacts/ui-015` for local reports and `artifacts/publication-0.1.5.json` for the six-asset release.
 - [ ] Evaluate one or more sampled subtitle styles against unrelated text and size changes before exposing a Watch filter.
 - [ ] Benchmark time to first and last overlay for dense Quick Translate selections and time to removal when text disappears.
 - [ ] Compare exact Windows text and OCR for recognition accuracy before choosing optional models. Evaluate English–Arabic model quality and latency before offering downloads.
