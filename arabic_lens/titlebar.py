@@ -8,11 +8,11 @@ class TitleBar(QFrame):
         self.window = window
         self.setFixedHeight(48)
         self.setLayoutDirection(Qt.LeftToRight)
-        self.setStyleSheet('''QFrame { background: #edf2e9; border-bottom: 1px solid #d9e3d6; }
+        self.setStyleSheet('''QFrame { background: #b7c6bc; border-bottom: 1px solid #a2b5a9; }
             QLabel { color: #2d594a; border: none; font-size: 13px; }
             QPushButton { border: none; border-radius: 6px; background: transparent;
                 color: #2d594a; font-size: 19px; min-height: 30px; padding: 0; }
-            QPushButton:hover { background: #d8e5d4; }
+            QPushButton:hover { background: #c3d0c6; }
             QPushButton#windowClose:hover { background: #d65345; color: white; }''')
         row = QHBoxLayout(self)
         row.setContentsMargins(20, 5, 10, 5)
