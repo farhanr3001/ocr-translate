@@ -119,7 +119,7 @@ class Application:
         self.source_monitor = SourceWindowMonitor(self.qt)
         self.source_monitor.invalidated_keys.connect(self.source_invalidated)
         self.engine.translated.connect(self.show_translation)
-        self.engine.removed.connect(self.overlays.remove_group)
+        self.engine.removed.connect(self.remove_engine_group)
         self.engine.removed.connect(self.source_monitor.forget)
         self.engine.cleared.connect(self.clear_overlays)
         self.engine.watch_cleared.connect(self.clear_watch_overlays)
@@ -669,6 +669,9 @@ class Application:
         active = active_window()
         source = window_identity(active[0]) if active else None
         self.schedule_capture(rect, active[2] if active else "", source)
+
+    def remove_engine_group(self, key):
+        self.overlays.remove_group(key, immediate=key.startswith('watch-') and self.engine.fast_watch_removal)
 
     def show_translation(self, result):
         if result.id.startswith('watch-') and result.source_window and self.engine.app_blocks.blocked(result.source_window[0]):

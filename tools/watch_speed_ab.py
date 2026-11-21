@@ -66,6 +66,32 @@ STABILITY_STEPS = [
     ]),
     ("Source text gone", []),
 ]
+CHAT_A = "23:33 Aya: Meet me by the gate."
+CHAT_B = "23:34 Sam: Bring the blue coat."
+CHAT_C = "23:35 Lena: I have 85 gold."
+CHAT_EDIT = "23:33 Aya: Meet me by the bridge."
+CHAT_NEW = "23:36 Omar: The shop closes soon."
+REMOVAL_STEPS = [
+    ("Live chat · three messages", [CHAT_A, CHAT_B, CHAT_C]),
+    ("Aya's message disappears", ["", CHAT_B, CHAT_C]),
+    ("Aya's message reappears", [CHAT_A, CHAT_B, CHAT_C]),
+    ("Aya edits gate to bridge", [CHAT_EDIT, CHAT_B, CHAT_C]),
+    ("Omar's message replaces Sam's", [CHAT_EDIT, CHAT_NEW, CHAT_C]),
+    ("The same messages scroll down", ["", CHAT_EDIT, CHAT_NEW, CHAT_C]),
+    ("All source text disappears", []),
+]
+REMOVAL_ROWS = {1: {0}, 3: {0}, 4: {1}, 6: {1, 2, 3}}
+SCROLL_STEP = 5
+TYPE_A = "The tailor is waiting beside the old bridge."
+TYPE_B = "Take the red coat to the village shop."
+TYPEWRITER_STEPS = [
+    ("Typewriter · first line", [TYPE_A]),
+    ("The typed line disappears", []),
+    ("The line types back in", [TYPE_A]),
+    ("A replacement types in", [TYPE_B]),
+    ("The replacement disappears", []),
+]
+TYPEWRITER_ROWS = {1: {0}, 3: {0}, 4: {0}}
 FIRST_STEP = 3.0
 STEP_SECONDS = 4.0
 FPS = 20
@@ -98,7 +124,7 @@ def coordinates(rect):
     return [rect.x, rect.y, rect.w, rect.h]
 
 
-def fixture(directory, swap, stability):
+def fixture(directory, swap, stability, removal=False, typewriter=False):
     qt = QApplication([])
     screen = qt.primaryScreen().availableGeometry()
     window = QWidget()
@@ -108,7 +134,7 @@ def fixture(directory, swap, stability):
     window.resize(min(1200, screen.width() - 40), min(575, screen.height() - 60))
     window.move(screen.center() - window.rect().center())
     layout = QVBoxLayout(window)
-    title = QLabel("Arabic Lens   /   Live Watch comparison")
+    title = QLabel("Arabic Lens   /   Overlay disappearance" if removal else "Arabic Lens   /   Live Watch comparison")
     title.setFont(QFont("Segoe UI", 19, QFont.DemiBold))
     layout.addWidget(title)
     stage = QLabel("Waiting for both Watch sessions")
@@ -118,14 +144,15 @@ def fixture(directory, swap, stability):
     layout.addLayout(columns, 1)
     panes, rows, timings = [], [], []
     experiment = "EARLY TRANSLATION + SOURCE CHECK" if stability else "PRELOAD + READY QUEUE"
-    headings = ("CURRENT · 0.1.6", "EXPERIMENT · " + experiment)
+    headings = (("CURRENT · 0.1.7", "EXPERIMENT · FASTER CLEAR") if removal
+                else ("CURRENT · 0.1.6", "EXPERIMENT · " + experiment))
     for heading in reversed(headings) if swap else headings:
         column = QVBoxLayout()
         label = QLabel(heading)
         label.setFont(QFont("Segoe UI", 11, QFont.DemiBold))
         header = QHBoxLayout()
         header.addWidget(label, 1)
-        time_header = QLabel("VISIBLE IN")
+        time_header = QLabel("CLEARED IN" if removal else "VISIBLE IN")
         time_header.setFixedWidth(82)
         time_header.setAlignment(Qt.AlignCenter)
         time_header.setStyleSheet("color: #a0c1b6")
@@ -174,7 +201,7 @@ def fixture(directory, swap, stability):
         "footer": coordinates(physical(footer)), "hwnd": int(window.winId()),
         "rows": [[coordinates(physical(row)) for row in labels] for labels in rows],
     })
-    steps = STABILITY_STEPS if stability else STEPS
+    steps = TYPEWRITER_STEPS if typewriter else REMOVAL_STEPS if removal else STABILITY_STEPS if stability else STEPS
     state = {"start": None, "step": -1, "lines": None}
     changes = []
     first_seen = {}
@@ -189,7 +216,7 @@ def fixture(directory, swap, stability):
         for mode, labels in zip(modes, timings):
             for i, label in enumerate(labels):
                 key = normalize(lines[i]) if i < len(lines) else ""
-                value = scores.get(mode, {}).get(key)
+                value = scores.get(mode, {}).get(str(i) if removal else key)
                 label.setText(f"{value} ms" if value is not None else ("·" if key else ""))
 
     def tick():
@@ -213,6 +240,8 @@ def fixture(directory, swap, stability):
         if stability and current == 3:
             sent = min(len(lines), 1 + int(phase_elapsed / .50))
             lines = lines[max(0, sent - 3):sent]
+        if typewriter and lines:
+            lines = [lines[0][:1 + int(phase_elapsed / .038)]]
         refresh_timings(lines)
         if not first and lines == state["lines"]:
             return
@@ -225,9 +254,12 @@ def fixture(directory, swap, stability):
                 label.setText(lines[index] if index < len(lines) else "")
         window.repaint()
         when = NOW()
+        if first:
+            state["phase_started"] = when
         for line in lines:
             first_seen.setdefault(normalize(line), when)
-        change = {"step": current, "time": when, "lines": lines, "first_seen": first_seen.copy()}
+        change = {"step": current, "time": when, "phase_started": state["phase_started"],
+                  "lines": lines, "first_seen": first_seen.copy()}
         changes.append(change)
         write_json(directory / "source-live.json", change)
         if current == len(steps) - 1:
@@ -560,14 +592,19 @@ def show_events(app, events):
     app.engine.translated.connect(show)
 
 
-def composite(capture, bounds, footer, apps, caption):
+def composite(capture, bounds, footer, apps, caption, include_fades=False, cues=()):
     image = capture.capture(bounds).copy()
     canvas = QPixmap.fromImage(QImage(image.data, bounds.w, bounds.h, image.strides[0],
                                       QImage.Format_RGB32).copy())
     painter = QPainter(canvas)
+    for row, tint in cues:
+        painter.fillRect(QRect(row.x - bounds.x, row.y - bounds.y, row.w, row.h), tint)
     for app in apps:
-        for win in app.overlays.windows.values():
-            if win.isVisible() and not win.closing and win.capture_excluded:
+        windows = list(app.overlays.windows.values())
+        if include_fades:
+            windows += app.overlays.retired
+        for win in windows:
+            if win.isVisible() and (include_fades or not win.closing) and win.capture_excluded:
                 rect = physical(win)
                 painter.setOpacity(win.windowOpacity())
                 painter.drawPixmap(rect.x - bounds.x, rect.y - bounds.y, rect.w, rect.h, win.grab())
@@ -642,7 +679,215 @@ def compare(times, translated, displayed, cleared, steps, changes):
                 and row["repeat_pass"] for row in results)}
 
 
-def run(directory, swap, stability, production=False):
+async def probe_removal(engine):
+    """Test-only source check. It never retires a line which can still be found."""
+    import numpy as np
+    from arabic_lens.anchors import VisualAnchors
+    from arabic_lens.scene import _gray, crop, locate
+
+    suspects = set()
+    while True:
+        await asyncio.sleep(.045)
+        next_suspects = set()
+        for state in list(engine.zone_states.values()):
+            scene, bounds = state["scene"], state["bounds"]
+            segments = [segment for segment in scene.segments.values()
+                        if segment.shown_key and segment.pixels is not None]
+            if not segments or state.get("protected"):
+                continue
+            try:
+                frame, masked = engine._masked(engine.capture.capture(bounds).copy(), bounds)
+            except OSError:
+                continue
+            if masked:
+                continue
+            gray = _gray(frame)
+            for segment in segments:
+                current = crop(gray, segment.rect)
+                if current is None or current.shape != segment.pixels.shape:
+                    continue
+                evidence = state.get("verified_rows", {}).get(segment.id)
+                if evidence:
+                    rect, top, pixels = evidence
+                    start = rect.y - top
+                    original = pixels[start:start + rect.h, max(0, rect.x):rect.right]
+                else:
+                    original = segment.pixels
+                if original.shape != current.shape or VisualAnchors.identical(current, original):
+                    continue
+                if (evidence and engine._find_watch_row(gray, evidence) is not None) or locate(segment, gray):
+                    continue
+                # Two samples with visibly different glyphs. Background-only
+                # changes and uncertain crops defer to the regular Watch path.
+                change = np.mean(np.abs(current.astype(np.int16) - original) > 35)
+                if change < .19:
+                    continue
+                identity = (id(scene), segment.id, segment.shown_key)
+                next_suspects.add(identity)
+                if identity in suspects:
+                    engine._cancel_segment(segment)
+                    scene.remove(segment.id)
+                    engine.anchors.items.pop(segment.id, None)
+                    engine.source_lost.emit(segment.id)
+        suspects = next_suspects
+
+
+def clear_without_fade(app):
+    """Switch only this fixture's confirmed Watch retirements to a hard cut."""
+    manager = app.overlays
+    app.engine.removed.disconnect(app.remove_engine_group)
+
+    def confirmed(key):
+        if not key.startswith("watch-"):
+            manager.remove_group(key)
+            return
+        for identifier in list(manager.windows):
+            if identifier == key or identifier.startswith(key + ":"):
+                manager.remove(identifier, immediate=True)
+        manager.remove_group(key)
+
+    app.engine.removed.connect(confirmed)
+
+
+def schedule_confirmed_edits(engine):
+    """Try the existing early job on a completed edit, retaining Arabic until the swap."""
+    read = engine._read_scene
+
+    async def read_with_edits(state, bounds, core, np, now, hwnd=None):
+        await read(state, bounds, core, np, now, hwnd)
+        ready = []
+        for segment in state["scene"].segments.values():
+            old = segment.shown_key
+            new = segment.key
+            if (segment.confirmed == now and old and old != new and not segment.pending_key
+                    and not old.startswith(new) and not new.startswith(old)
+                    and segment.text.endswith((".", "?", "!"))):
+                ready.append((segment, old))
+        if not ready:
+            return
+        try:
+            for segment, _ in ready:
+                segment.shown_key = ""
+            engine._schedule_scene(state, bounds, "Speed fixture", hwnd, now,
+                                   early_ids={segment.id for segment, _ in ready})
+        finally:
+            for segment, old in ready:
+                segment.shown_key = old
+
+    engine._read_scene = read_with_edits
+
+
+class RemovalMeasurement:
+    """Measure the old painted Qt surface, including any retirement fade."""
+    def __init__(self, apps, swapped, rows, typewriter):
+        self.apps = dict(zip(("current", "experiment"), apps))
+        self.swapped = swapped
+        self.previous = {mode: {} for mode in self.apps}
+        self.pending = {}
+        self.results = {}
+        self.step = None
+        self.step_started = None
+        self.scroll = {}
+        self.scroll_before = {}
+        self.reappeared = {}
+        self.rows = rows
+        self.typewriter = typewriter
+        self.steps = TYPEWRITER_STEPS if typewriter else REMOVAL_STEPS
+        self.removal_rows = TYPEWRITER_ROWS if typewriter else REMOVAL_ROWS
+
+    def observe(self, state):
+        from shiboken6 import isValid
+
+        step = state["step"]
+        if step != self.step:
+            self.step_started = state["phase_started"]
+            self.pending = {mode: {} for mode in self.apps}
+            self.results[step] = {mode: {} for mode in self.apps}
+            if step in self.removal_rows:
+                now_visible = {normalize(text) for text in state["lines"]}
+                for i, text in enumerate(self.steps[step - 1][1]):
+                    if text and normalize(text) not in now_visible:
+                        for mode, entries in self.previous.items():
+                            self.pending[mode][i] = entries.get(normalize(text))
+            if step == SCROLL_STEP:
+                self.scroll_before = {mode: entries.copy() for mode, entries in self.previous.items()}
+            self.step = step
+        for mode, app in self.apps.items():
+            for row, window in list(self.pending[mode].items()):
+                if window is None:
+                    self.results[step][mode][row] = "missing before change"
+                    self.pending[mode].pop(row)
+                elif not isValid(window) or not window.isVisible() or window.windowOpacity() < .05:
+                    self.results[step][mode][row] = round(max(0, NOW() - self.step_started) * 1000)
+                    self.pending[mode].pop(row)
+            self.previous[mode] = {app.overlays.sources[key]: window
+                                   for key, window in app.overlays.windows.items()
+                                   if key in app.overlays.sources and window.isVisible()}
+            if step == 2 and NOW() - state["time"] > 1.5:
+                self.reappeared[mode] = normalize(TYPE_A if self.typewriter else CHAT_A) in self.previous[mode]
+            if step == SCROLL_STEP and NOW() - state["time"] > .6:
+                index = (mode == "experiment") ^ self.swapped
+                visible = self.previous[mode]
+                self.scroll[mode] = (set(visible) == {normalize(line) for line in state["lines"] if line}
+                                     and all(self.scroll_before[mode].get(key) is window
+                                             for key, window in visible.items())
+                                     and not misplaced(app, self.rows[index], state))
+        return {mode: {row: value for row, value in values.items() if isinstance(value, int)}
+                for mode, values in self.results[step].items()}
+
+    def report(self, displayed, cleared, changes):
+        expected_rows = self.removal_rows
+        cases = {self.steps[step][0]: self.results.get(step, {}) for step in expected_rows}
+        valid = all(
+            set(self.results.get(step, {}).get(mode, {})) == rows
+            and all(isinstance(v, int) for v in self.results[step][mode].values())
+            for step, rows in expected_rows.items() for mode in self.apps
+        )
+        all_arabic = {mode: {(event["source"], event["arabic"]) for event in events}
+                      for mode, events in displayed.items()}
+        if self.typewriter:
+            completed = {normalize(TYPE_A), normalize(TYPE_B)}
+            all_arabic = {mode: {(src, ar) for src, ar in events if normalize(src) in completed}
+                          for mode, events in all_arabic.items()}
+        matches = all_arabic["current"] == all_arabic["experiment"]
+        if self.typewriter:
+            matches = matches and len({normalize(src) for src, _ in all_arabic["experiment"]}) == 2
+        edit_swap = {}
+        if not self.typewriter:
+            edit_start = next(change["time"] for change in changes if change["step"] == 3)
+            for mode, events in displayed.items():
+                matches_edit = [round((e["shown"] - edit_start) * 1000) for e in events
+                                if normalize(e["source"]) == normalize(CHAT_EDIT) and e["shown"] >= edit_start]
+                edit_swap[mode] = min(matches_edit) if matches_edit else None
+        return {"clear_times_ms_by_row": cases, "edited_arabic_visible_ms": edit_swap,
+                "message_reappeared": self.reappeared,
+                "scroll_preserved": self.scroll, "cleared": cleared,
+                "exact_arabic_match": matches,
+                "pass": valid and all(cleared.values())
+                and (self.typewriter or all(self.scroll.get(mode) for mode in self.apps))
+                and all(self.reappeared.get(mode) for mode in self.apps)
+                and matches}
+
+
+def removal_cues(state, row_rects, steps):
+    if not state or not state["step"] or state["step"] == SCROLL_STEP:
+        return []
+    step = state["step"]
+    previous = steps[step - 1][1]
+    current = state["lines"]
+    cues = []
+    for index in range(max(len(current), len(previous))):
+        old = previous[index] if index < len(previous) else ""
+        new = current[index] if index < len(current) else ""
+        if old == new:
+            continue
+        color = QColor(206, 59, 73, 120) if not new else (
+            QColor(47, 165, 100, 115) if not old else QColor(224, 155, 53, 105))
+        cues.extend((rows[index], color) for rows in row_rects)
+    return cues
+
+
+def run(directory, swap, stability, production=False, removal=False, typewriter=False, early_edit=False):
     directory.mkdir(parents=True, exist_ok=False)
     frames = directory / "frames"
     frames.mkdir()
@@ -660,6 +905,10 @@ def run(directory, swap, stability, production=False):
         command.append("--swap")
     if stability:
         command.append("--stability")
+    if removal:
+        command.append("--removal")
+    if typewriter:
+        command.append("--typewriter-removal")
     child = subprocess.Popen(command, env=dict(os.environ, PYTHONPATH=str(ROOT)))
     apps = []
     capture = None
@@ -671,7 +920,7 @@ def run(directory, swap, stability, production=False):
             time.sleep(.05)
         fixture_info = json.loads((directory / "ready.json").read_text())
         bounds, footer = (Rect(*fixture_info[k]) for k in ("window", "footer"))
-        steps = STABILITY_STEPS if stability else STEPS
+        steps = TYPEWRITER_STEPS if typewriter else REMOVAL_STEPS if removal else STABILITY_STEPS if stability else STEPS
         translated, displayed = {}, {}
         recognized = []
         placement = {"current": [], "experiment": []}
@@ -683,28 +932,37 @@ def run(directory, swap, stability, production=False):
             app.settings.cache_enabled = False
             app.settings.history_enabled = False
             app.settings.watch_areas = [fixture_info["panes"][1 - index if swap else index]]
-            if production:
+            if removal:
+                app.engine.fast_watch = True
+            elif production:
                 app.engine.fast_watch = mode == "experiment"
             else:
                 app.engine.fast_watch = False
+            app.engine.fast_watch_removal = removal and production and mode == "experiment"
             if mode == "experiment" and stability and not production:
                 # Shorter preview ticks are part of this prototype only. OCR
                 # settings and the existing typing quiet period are unchanged.
                 app.settings.scan_ms = 100
             translated[mode], displayed[mode] = [], []
             show_events(app, displayed[mode])
+            if removal and mode == "experiment" and not production:
+                clear_without_fade(app)
 
             async def configure(engine, experiment, events):
-                if experiment and not stability:
+                if experiment and not stability and not removal:
                     await engine.provider.local.close()
                     engine.provider.local = ReadyQueueProvider()
                 service = EarlyService if experiment and stability and not production else TimedService
                 engine.translator = service(engine.provider, engine.store, events)
-                if stability:
+                if removal or stability:
                     # Equal warm model state on both sides isolates the scheduling change.
                     await asyncio.get_running_loop().run_in_executor(
                         engine.provider.local.executor, engine.provider.local._initialize)
-                    if experiment and not production:
+                    if experiment and removal and not production:
+                        asyncio.create_task(probe_removal(engine))
+                        if early_edit:
+                            schedule_confirmed_edits(engine)
+                    elif experiment and not production:
                         recognized.extend([install_early_experiment(engine)])
                 elif experiment:
                     await engine.provider.local.warm_up()
@@ -723,6 +981,7 @@ def run(directory, swap, stability, production=False):
         times = []
         saved = set()
         previous_scores = None
+        removal_probe = RemovalMeasurement(apps, swapped=swap, rows=row_rects, typewriter=typewriter) if removal else None
         while (elapsed := NOW() - start) < FIRST_STEP + STEP_SECONDS * len(steps):
             qt.processEvents()
             now = NOW()
@@ -749,13 +1008,18 @@ def run(directory, swap, stability, production=False):
             else:
                 shown = [0, 0]
                 caption = "Both sides are watching the same text."
-            canvas = composite(capture, bounds, footer, apps, caption)
+            source_state = None
             if (live := directory / "source-live.json").exists():
                 try:
                     source_state = json.loads(live.read_text(encoding="utf-8"))
                 except (OSError, ValueError):
                     source_state = None
-                if source_state:
+                if source_state and removal:
+                    scores = removal_probe.observe(source_state)
+                    if scores != previous_scores:
+                        write_json(directory / "timings.json", scores)
+                        previous_scores = scores
+                elif source_state:
                     first_seen = source_state["first_seen"]
                     scores = {
                         mode: {key: max(0, round((result["shown"] - first_seen[key]) * 1000))
@@ -772,17 +1036,22 @@ def run(directory, swap, stability, production=False):
                         issues = misplaced(app, row_rects[1 - index if swap else index], source_state)
                         if issues:
                             placement[mode].append({"time": now, "phase": source_state["step"], "issues": issues})
+            if removal:
+                caption = "Red: vanished    Green: returned    Amber: edited or replaced    |    Timers include fading"
+            cues = removal_cues(source_state, row_rects, steps) if removal else ()
+            canvas = composite(capture, bounds, footer, apps, caption, include_fades=removal, cues=cues)
             canvas.save(str(frames / f"{frame:05}.jpg"), quality=86)
             frame += 1
             next_frame += 1 / FPS
-            if len(times) > 0 and len(times) not in saved and times[-1] + 1.9 < now and all(shown):
+            if len(times) > 0 and len(times) not in saved and times[-1] + 1.9 < now and (removal or all(shown)):
                 canvas.save(str(directory / f"step-{len(times)}.png"))
                 saved.add(len(times))
         assert len(times) == len(steps), times
         cleared = {mode: not any(not w.closing and w.isVisible() for w in app.overlays.windows.values())
                    for mode, app in zip(displayed, apps)}
         changes = json.loads((directory / "source-changes.json").read_text(encoding="utf-8"))
-        report = compare(times, translated, displayed, cleared, steps, changes)
+        report = (removal_probe.report(displayed, cleared, changes) if removal
+                  else compare(times, translated, displayed, cleared, steps, changes))
         report["real_seconds"] = round(elapsed, 3)
         report["frames"] = frame
         report["swapped"] = swap
@@ -812,7 +1081,10 @@ if __name__ == "__main__":
     output = Path(sys.argv[1]).resolve()
     swapped = "--swap" in sys.argv[2:]
     stability = "--stability" in sys.argv[2:]
+    typewriter = "--typewriter-removal" in sys.argv[2:]
+    removal = typewriter or "--removal" in sys.argv[2:]
     if "--fixture" in sys.argv[2:]:
-        fixture(output, swapped, stability)
+        fixture(output, swapped, stability, removal, typewriter)
     else:
-        raise SystemExit(run(output, swapped, stability, "--production" in sys.argv))
+        raise SystemExit(run(output, swapped, stability, "--production" in sys.argv, removal, typewriter,
+                             "--early-edit" in sys.argv))

@@ -242,6 +242,7 @@ def fill_own_overlays(image, bounds, rects):
 
 class Engine(QObject):
     fast_watch = True
+    fast_watch_removal = True
     translated = Signal(object)
     removed = Signal(str)
     cleared = Signal()
@@ -290,6 +291,7 @@ class Engine(QObject):
         self.ocr_zone_tracking = True
         self.jobs = {}
         self.manual = self.watcher = None
+        self.retire_probe = None
         self.context = None
         self.generation = 0
         self.backoff = 0
@@ -350,6 +352,10 @@ class Engine(QObject):
         self._drop_watch_anchors()
         self.watch = enabled
         self.generation += 1
+        if self.retire_probe:
+            self.retire_probe.cancel()
+            await asyncio.gather(self.retire_probe, return_exceptions=True)
+            self.retire_probe = None
         if self.watcher:
             self.watcher.cancel()
             await asyncio.gather(self.watcher, return_exceptions=True)
@@ -362,6 +368,8 @@ class Engine(QObject):
         self.watch_changed.emit(enabled)
         if enabled:
             self.watcher = asyncio.create_task(self._watch_loop())
+            if self.fast_watch_removal:
+                self.retire_probe = asyncio.create_task(self._probe_watch_sources())
 
     def _cancel_jobs(self):
         for task in self.jobs.values():
@@ -638,6 +646,68 @@ class Engine(QObject):
             segment.rect = Rect(new.x - bounds.x, new.y - bounds.y, segment.rect.w, segment.rect.h)
             self.source_moved.emit(key, new)
 
+    async def _probe_watch_sources(self):
+        """Confirm strong changes to visible text without waiting for OCR."""
+        import numpy as np
+        from .scene import _gray, crop, locate
+
+        suspects = set()
+        previews = {}
+        cursor = 0
+        while self.watch:
+            await asyncio.sleep(.045)
+            zones = [state for state in self.zone_states.values()
+                     if state['bounds'].w * state['bounds'].h <= 1_000_000
+                     and not state.get('protected')
+                     and any(s.shown_key for s in state['scene'].segments.values())]
+            if not zones:
+                suspects.clear()
+                previews.clear()
+                continue
+            live_scenes = {zone['scene'] for zone in zones}
+            previews = {scene: image for scene, image in previews.items() if scene in live_scenes}
+            state = zones[cursor % len(zones)]
+            cursor += 1
+            bounds, scene = state['bounds'], state['scene']
+            previous = {item for item in suspects if item[0] is scene}
+            suspects = {item for item in suspects
+                        if item[0] is not scene and item[0] in live_scenes}
+            try:
+                preview = self.preview_capture.capture(bounds).copy()
+                old_preview = previews.get(scene)
+                previews[scene] = preview
+                if old_preview is not None and not previous and np.array_equal(preview, old_preview):
+                    continue
+                frame, protected = self._masked(self.capture.capture(bounds).copy(), bounds)
+            except OSError:
+                continue
+            if protected:
+                continue
+            gray = _gray(frame)
+            for segment in list(scene.segments.values()):
+                if not segment.shown_key or segment.shown_key != segment.key or segment.pixels is None:
+                    continue
+                current = crop(gray, segment.rect)
+                evidence = state.get('verified_rows', {}).get(segment.id)
+                original = segment.pixels
+                if evidence:
+                    source, y, row = evidence
+                    offset = source.y - y
+                    original = row[offset:offset + source.h, max(0, source.x):source.right]
+                if current is None or current.shape != original.shape or not original.size:
+                    continue
+                if VisualAnchors.identical(current, original):
+                    continue
+                if np.mean(np.abs(current.astype(np.int16) - original) > 35) < .19:
+                    continue
+                if (evidence and self._find_watch_row(gray, evidence) is not None) or locate(segment, gray):
+                    continue
+                identity = (scene, segment.id, segment.shown_key)
+                if identity not in previous:
+                    suspects.add(identity)
+                    continue
+                self._retire_segment(state, segment.id)
+
     async def _read_scene(self, state, bounds, core, np, now, hwnd=None):
         """OCR the accumulated changed strips of one unit and reconcile."""
         from .text import normalize
@@ -735,7 +805,7 @@ class Engine(QObject):
         if (self.fast_watch and self.settings.provider == 'Built-in offline'
                 and self.settings.stability_ms == 400 and time.monotonic() >= self.backoff):
             self._schedule_scene(state, bounds, title=self.context_title(hwnd), hwnd=hwnd,
-                                 now=now, early_ids=set(added + replaced))
+                                 now=now, early_ids=set(added + replaced + (updated if self.fast_watch_removal else [])))
 
     def context_title(self, hwnd):
         active = active_window()
@@ -767,7 +837,11 @@ class Engine(QObject):
             ready = scene.due(now, base, capacity, image=state['image'])
         else:
             ready = [segment for segment in scene.segments.values()
-                     if segment.id in early_ids and not segment.pending_key and not segment.shown_key
+                     if segment.id in early_ids and not segment.pending_key
+                     and (not segment.shown_key or (self.fast_watch_removal
+                         and segment.shown_key != segment.key
+                         and not segment.shown_key.startswith(segment.key)
+                         and not segment.key.startswith(segment.shown_key)))
                      and segment.retry_after <= now and segment.text.endswith(('.', '?', '!'))
                      and '\n' not in segment.text and len(segment.text.split()) >= 4][:capacity]
         for segment in ready:

@@ -585,10 +585,10 @@ class OverlayManager:
         """Legacy engine heartbeat; source tracking now owns overlay lifetime."""
         return
 
-    def remove_group(self, key):
+    def remove_group(self, key, immediate=False):
         for item in list(self.windows):
             if item == key or item.startswith(key + ':'):
-                self.remove(item)
+                self.remove(item, immediate=immediate)
         self.dismissed = {item for item in self.dismissed if item != key and not item.startswith(key + ':')}
 
     def remove(self, key, immediate=False, notify=True):

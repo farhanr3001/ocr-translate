@@ -25,6 +25,13 @@ Check the current Git state before issuing Git operations; the working checkout 
 
 ## Current verified baseline
 
+### Watch overlay responsiveness (0.1.8)
+
+- [x] Confirm strong changes to shown Watch text using two samples. Check for scrolling before retirement, keep ordinary OCR confirmation when evidence is ambiguous, and limit the additional capture budget to one eligible Watch zone per tick.
+- [x] Clear confirmed Watch retirements immediately and start completed edits through the existing early job. Verify the OCR source row before swapping overlays. Quick Translate and translation rules are unchanged.
+- [x] Prototype chat and typewriter captures passed exact completed-line output, disappearance, and chat scroll checks. The user requested no further desktop test windows during integration; the integrated visual run was stopped. Background suite passed 228 tests with two optional skips, excluding the visible native selection fixture. Five focused tests passed, including completed-edit scheduling and preserving a scrolled line.
+- [ ] Verify minimized installer startup, matching delta, full fallback, and public updater.
+
 ### Watch scheduling, 21 November 2026 (0.1.7)
 
 - [x] Preserve model, OCR grouping, Quick Translate, and overlay removal policy. Start offline Watch translation early for new complete lines at default stability. Before display, verify the original OCR row against a fresh capture and relocate it if the exact row scrolled. Ordinary Watch scheduling remains available when verification fails.
