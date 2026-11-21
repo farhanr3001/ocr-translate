@@ -30,7 +30,8 @@ Check the current Git state before issuing Git operations; the working checkout 
 - [x] Confirm strong changes to shown Watch text using two samples. Check for scrolling before retirement, keep ordinary OCR confirmation when evidence is ambiguous, and limit the additional capture budget to one eligible Watch zone per tick.
 - [x] Clear confirmed Watch retirements immediately and start completed edits through the existing early job. Verify the OCR source row before swapping overlays. Quick Translate and translation rules are unchanged.
 - [x] Prototype chat and typewriter captures passed exact completed-line output, disappearance, and chat scroll checks. The user requested no further desktop test windows during integration; the integrated visual run was stopped. Background suite passed 228 tests with two optional skips, excluding the visible native selection fixture. Five focused tests passed, including completed-edit scheduling and preserving a scrolled line.
-- [ ] Verify minimized installer startup, matching delta, full fallback, and public updater.
+- [x] Verified silent install, minimized startup and guarded uninstall. The copied 0.1.7 build applied the live delta, reopened once, and retained data and the exact model file. Both update packages passed checksum and payload verification. The final build replaced `dist/ArabicLens` without launching it.
+- [x] Published [v0.1.8](https://github.com/farhanr3001/ocr-translate/releases/tag/v0.1.8), source `7db429b`. The production updater found and verified the two-file, 6,085,937-byte delta and reported 0.1.8 current. Evidence is in `artifacts/watch-018`.
 
 ### Watch scheduling, 21 November 2026 (0.1.7)
 
