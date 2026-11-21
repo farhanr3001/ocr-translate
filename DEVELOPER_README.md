@@ -29,9 +29,10 @@ Check the current Git state before issuing Git operations; the working checkout 
 
 - [x] Reproduced the small-text split on the supplied AnyDesk screenshot. Windows OCR now returns both complete lines in the original image and in a tight crop at the same pixel scale.
 - [x] Verify separate rows and intact click-through Replace placement with seven rendered font sizes from 10–32 px. Verify eight appended rows at 12, 20 and 32 px, including wide gaps and clock values.
-- [ ] Verify the randomized 80 WPM sequence at three font sizes, including replacing a middle line without resetting its neighbors.
+- [x] Passed all 27 steps of an 80 WPM replay at 12, 20 and 32 px. Each case appended eight varied lines across two large gaps and replaced a middle line. The rendered Arabic widgets covered their source boxes, stayed separate, preserved digits, and kept unaffected overlay IDs. Each final state was ready within 916 ms of its final keystroke in this replay.
 - [x] Background suite passed 252 tests with two optional video skips. The desktop-interactive selection fixture was excluded to keep test windows off the desktop.
-- [ ] Verify staged and installed smoke tests, both matched deltas, full fallback, isolated upgrade/restart, and public updater discovery.
+- [x] Staged and installed OCR, model and overlay smoke checks passed. Both matched deltas applied the exact final executable and reopened once while preserving settings and the model. The full fallback matched the staged payload. Updated the workspace portable copy.
+- [x] Published [v0.1.11](https://github.com/farhanr3001/ocr-translate/releases/tag/v0.1.11) from `3902a8c`. Production updater verified the public 6,098,433-byte delta from 0.1.10 and 6,105,732-byte delta from 0.1.5. See `artifacts/compact-0111` for the offscreen screenshot replay, font-size matrix, typewriter results and release verification. The size matrix read both supplied screenshot crops correctly, with some OCR errors below 11 px on the synthetic fonts.
 
 A horizontal pixel gradient locates actual narrow text rows for a localized 3×/4× reread when the existing OCR splits a row or misses part of it. Covering overlays use the measured pitch of nearby rows and can refit an existing widget when another row arrives. Watch checks small changes briefly after visible edits and preserves an intact neighboring line even when a subsequent OCR read combines it with a line being typed. Suspect clock digits are accepted only when enlarged reads agree and preserve the other characters.
 
