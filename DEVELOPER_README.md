@@ -30,7 +30,11 @@ Check the current Git state before issuing Git operations; the working checkout 
 - [x] Give a retired Watch row an explicit, bounded OCR retry. Use a shorter change cadence for narrow subtitle-shaped selections and permit early verification of unpunctuated text in that path.
 - [x] Verify matching words via localized Windows OCR if exact pixel verification fails on a moving background. Keep the original region and revision checks.
 - [x] Background suite passed 231 tests, with two optional skips. Windows OCR confirmed the same words across three synthetic subtitle changes and rejected the preceding words when the next subtitle appeared. The provided screenshot informed the test; the actual video and its timing remain unverified.
-- [ ] Verify minimized installer and delta, full fallback, and public updater.
+- [x] Verified silent install, minimized startup and guarded uninstall. The 0.1.8 copy applied the delta, reopened once and retained user data and the exact model file. Verified the full app-file fallback and both ZIP payloads and checksums. Replaced `dist/ArabicLens` without launching it.
+- [x] Published [v0.1.9](https://github.com/farhanr3001/ocr-translate/releases/tag/v0.1.9), source `a471654`. The production updater found, downloaded and verified the two-file, 6,086,185-byte delta from 0.1.8 and reported 0.1.9 current.
+- [x] Replayed four captions over a changing synthetic background with the Watch loop, Windows OCR and warmed bundled model. The first caption used pixels from the supplied screenshot. With 750 ms and 1,500 ms caption holds, 0.1.9 emitted full Arabic results for all four before replacement (222–389 ms across both runs). The 0.1.8 engine emitted none on the same frames. The longer run also briefly emitted a partial first line. These timings end at the engine's translation signal. They do not measure visible paint or performance on the user's video. Evidence and runner are in `artifacts/watch-019`.
+
+Sample-based text style filtering was investigated separately. A glyph comparison experiment could distinguish several fonts at the sampled size and took roughly half a millisecond per clean line, but similar fonts and size changes produced overlapping match scores. Do not use those scores as a hard production filter. An optional Watch-only setting would need to demonstrate that it preserves wanted captions over moving backgrounds while reducing unwanted translations. OCR would still run before the comparison.
 
 ### Watch overlay responsiveness (0.1.8)
 
