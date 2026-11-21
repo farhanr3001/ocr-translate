@@ -86,7 +86,13 @@ class VisualAnchors:
     def identical(current, original):
         if current.shape != original.shape:
             return False
-        if np.count_nonzero(np.abs(current.astype(np.int16) - original.astype(np.int16)) > 24) <= 12:
+        difference = np.abs(current.astype(np.int16) - original.astype(np.int16)) > 24
+        if np.count_nonzero(difference) <= 12:
+            return True
+        # A blinking text caret (or a thin cursor/selection edge) changes one
+        # narrow vertical stripe and no letters. Ignore up to 3 adjacent columns.
+        columns = np.flatnonzero(difference.any(axis=0))
+        if columns.size and columns[-1] - columns[0] <= 2:
             return True
         # Hover/focus often changes a label's colour while keeping its glyph
         # edges. Preserve that text anchor; OCR will still decide whether the

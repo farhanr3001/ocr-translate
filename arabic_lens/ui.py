@@ -558,6 +558,12 @@ class SettingsWindow(QMainWindow):
         self.check(placement, "follow_content", "Follow text when scrolling", overlay=True)
         self.overlay_fields["position"].setToolTip(self.t("Placement adjusts to the screen edges and nearby translations."))
         self.overlay_fields["follow_content"].setToolTip(self.t("Translations stay visible until their English text changes or leaves the screen."))
+        lifetime = self.combo(placement, "quick_lifetime", "Quick Translate overlay",
+            [("source", "Until the text changes"), ("timer", "For a set time")], overlay=True)
+        seconds = self.spin(placement, "quick_seconds", "Seconds (0 = automatic)", 0, 120, overlay=True)
+        seconds.setToolTip(self.t("Automatic time allows a comfortable reading pace for the length of the translation."))
+        seconds.setEnabled(self.settings.overlay.quick_lifetime == 'timer')
+        lifetime.currentIndexChanged.connect(lambda _index: seconds.setEnabled(lifetime.currentData() == 'timer'))
 
         advanced = self.button("Advanced tuning", lambda checked: appearance_widget.setVisible(checked))
         advanced.setCheckable(True)

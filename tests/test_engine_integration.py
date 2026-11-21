@@ -115,7 +115,9 @@ def test_real_watch_pipeline_change_disappearance_and_overlay(monkeypatch, tmp_p
                 time.sleep(.03)
         assert provider.calls == 1  # Stable dialogue incurs no repeated OCR/translation.
         if not captured_matches:
-            assert engine.capture.calls == 1
+            # One read plus at most one full-resolution re-check of the lines
+            # just read (it catches final keystrokes the preview misses).
+            assert engine.capture.calls <= 2
             assert engine.preview_capture.calls >= 3
         overlays.show(results[0])
         qt.processEvents()
@@ -135,7 +137,9 @@ def test_real_watch_pipeline_change_disappearance_and_overlay(monkeypatch, tmp_p
             snapshot[0] = cv2.cvtColor(np.frombuffer(rendered.bits(), dtype=np.uint8).reshape(rendered.height(), rendered.width(), 4).copy(), cv2.COLOR_RGBA2BGRA)
         wait_for(qt, lambda: len(results) == 3)
         assert "treasure" in results[2].source.casefold()
-        assert removed
+        # The changed dialogue replaced the old Arabic: either retired and
+        # re-added, or (for a closely related line) updated in place.
+        assert removed or results[2].id == results[1].id
         fixture.text = ""
         fixture.update()
         qt.processEvents()

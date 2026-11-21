@@ -56,3 +56,24 @@ def test_selection_release_submits_without_confirmation_and_escape_cancels(qt):
     assert cancelled
     selection.close()
     selection.deleteLater()
+
+
+def test_quick_translate_overlay_time_setting(qt, tmp_path):
+    settings = Settings()
+    store = TranslationStore(tmp_path / "quick-time.db", settings)
+    window = SettingsWindow(settings, LocalizationService(settings), store)
+    try:
+        lifetime = window.overlay_fields['quick_lifetime']
+        seconds = window.overlay_fields['quick_seconds']
+        assert lifetime.currentData() == 'source' and not seconds.isEnabled()
+        lifetime.setCurrentIndex(lifetime.findData('timer'))
+        assert seconds.isEnabled()
+        seconds.setValue(9)
+        emitted = []
+        window.apply_requested.connect(emitted.append)
+        window.apply()
+        assert emitted[0]['overlay']['quick_lifetime'] == 'timer'
+        assert emitted[0]['overlay']['quick_seconds'] == 9
+    finally:
+        window.deleteLater()
+        store.close()

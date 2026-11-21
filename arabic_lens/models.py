@@ -52,3 +52,4 @@ class Translation:
     container: Rect | None = None
     source_window: tuple | None = None
     notice: bool = False
+    line_height: int = 0  # Physical height of one source text line (0 = unknown).

@@ -142,14 +142,13 @@ def test_attached_screenshots_real_ocr_and_model(monkeypatch, tmp_path, fixture,
             engine.translate_region(bounds,'Document')
             wait(qt,lambda: len(results)>=count)
         else:
-            # The same Watch processing path used for a stable detector crop.
-            from arabic_lens.detection import TrackedRegion, fingerprint
-            region = TrackedRegion('fixture',bounds,fingerprint(image),time.monotonic(),time.monotonic())
-            engine.tracker.regions[region.id]=region
-            future = engine._submit(engine._region(region,image,bounds,'Document',engine.generation,capture_rect=bounds))
-            wait(qt,lambda: future.done())
-            future.result()
-            qt.processEvents()
+            # The real Watch path over the whole document.
+            monkeypatch.setattr(engine_module,'active_window',lambda active=True:(123,bounds,'Document'))
+            monkeypatch.setattr(engine_module,'source_window_current',lambda source:True)
+            settings.watch_areas=[[bounds.x,bounds.y,bounds.w,bounds.h]]
+            engine.set_watch(True)
+            wait(qt,lambda: len(results)>=count)
+            results.sort(key=lambda r:(r.rect.y,r.rect.x))
         assert len(results)==count and not errors
         assert all(preserves_values(result.source,result.arabic) for result in results)
         assert all(not any(c in result.arabic for c in '٠١٢٣٤٥٦٧٨٩') for result in results)
@@ -296,7 +295,9 @@ def test_watch_detects_documents_and_idles_without_extra_ocr(monkeypatch,tmp_pat
         start=time.monotonic()
         while time.monotonic()-start<.65:
             qt.processEvents();time.sleep(.01)
-        assert engine.capture.calls==captures and len(results)==result_count
+        # Idle: no re-reading or translation; at most one light audit capture
+        # (every 1.5 s it checks known lines still match their pixels).
+        assert engine.capture.calls<=captures+1 and len(results)==result_count
     finally:
         engine.close();store.close()
 
@@ -325,6 +326,7 @@ def test_focused_watch_area_crops_capture_and_removes_scrolled_text(monkeypatch,
     results=[];lost=[];moved=[]
     engine.translated.connect(results.append)
     engine.source_lost.connect(lost.append)
+    engine.removed.connect(lost.append)  # Watch retires vanished text by id.
     engine.source_moved.connect(lambda key,rect:moved.append((key,rect)))
     try:
         engine.set_watch(True)

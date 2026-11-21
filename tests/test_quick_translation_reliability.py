@@ -183,7 +183,8 @@ def test_missing_english_ocr_emits_actionable_manual_failure(monkeypatch):
     fake = SimpleNamespace(status=SimpleNamespace(emit=lambda *args: None),
         manual_failed=SimpleNamespace(emit=lambda *args: failures.append(args)),
         capture=SimpleNamespace(capture=lambda rect: np.zeros((100,300,4), np.uint8)),
-        ocr_lock=asyncio.Lock(), _get_ocr=unavailable, _report=reports.append)
+        ocr_lock=asyncio.Lock(), _get_ocr=unavailable, _report=reports.append,
+        _masked=lambda image, bounds: (image, []))
     monkeypatch.setattr(engine_module, 'source_window_current', lambda source: True)
     asyncio.run(engine_module.Engine._manual_translate(fake, Rect(0,0,300,100), '', None))
     assert failures[0][0] == 'ocr_language' and reports

@@ -11,7 +11,7 @@ import arabic_lens.engine as engine_module
 
 from arabic_lens.config import Settings
 from arabic_lens.anchors import VisualAnchors
-from arabic_lens.detection import RegionTracker, TrackedRegion
+from arabic_lens.detection import RegionTracker
 from arabic_lens.engine import Engine, dirty_capture_rects, whole_screen_tiles
 from arabic_lens.models import Rect, TextBlock, Translation
 from arabic_lens.text import normalize
@@ -44,15 +44,21 @@ class StubOcr:
 
 
 def fake_ocr_engine(desktop, settings):
+    """A Watch engine with real scanning/scene code, stub OCR and no translation."""
+    import types
     ocr = StubOcr()
-    removed, alive = [], []
-    fake = SimpleNamespace(settings=settings, zone_states={}, tracker=RegionTracker(),
+    removed, moved = [], []
+    fake = SimpleNamespace(settings=settings, zone_states={},
         preview_capture=CroppedCapture(desktop, True), capture=CroppedCapture(desktop),
         ocr=ocr, _get_ocr=lambda: ocr, ocr_lock=asyncio.Lock(),
-        anchors=SimpleNamespace(items={}), jobs={}, backoff=float('inf'),
-        generation=1, region_alive=SimpleNamespace(emit=alive.append),
-        removed=SimpleNamespace(emit=removed.append))
-    fake._read_dirty_zone = lambda *args: Engine._read_dirty_zone(fake, *args)
+        anchors=VisualAnchors(), jobs={}, backoff=float('inf'), generation=1,
+        own_overlays=lambda: (), removed=SimpleNamespace(emit=removed.append),
+        source_moved=SimpleNamespace(emit=lambda *args: moved.append(args)),
+        diagnostics=SimpleNamespace(emit=lambda *args: None),
+        progress=SimpleNamespace(emit=lambda *args: None))
+    for name in ('_masked', '_follow_scene', '_read_scene', '_verify_read', '_schedule_scene',
+                 '_retire_segment', '_cancel_segment', '_translate_segment', '_scan_ocr_zone'):
+        setattr(fake, name, types.MethodType(getattr(Engine, name), fake))
     return fake, ocr, removed
 
 
@@ -69,14 +75,13 @@ def test_selected_zones_and_outside_changes_are_isolated(monkeypatch):
     fake, ocr, removed = fake_ocr_engine(desktop, settings)
 
     async def scan_both():
-        await Engine._scan_ocr_zone(fake, 0, nav, 1, 'X', np, 0, multiple=True)
-        await Engine._scan_ocr_zone(fake, 1, feed, 1, 'X', np, 0, multiple=True)
+        await fake._scan_ocr_zone(0, nav, 1, 'X', np, 0, multiple=True)
+        await fake._scan_ocr_zone(1, feed, 1, 'X', np, 0, multiple=True)
 
     async def exercise():
         await scan_both()
-        static = fake.zone_states[0]['tracker'].regions['1']
-        static.processed = True
-        static.delivered.add((0, normalize('A readable English sentence.')))
+        static = fake.zone_states[0]['scene'].segments['watch-0-1']
+        static.shown_key = static.key  # Its Arabic is on screen.
         clock[0] += .1
         desktop[30:95, 470:590, :3] = 240  # Entirely outside either zone.
         await scan_both()
@@ -84,16 +89,14 @@ def test_selected_zones_and_outside_changes_are_isolated(monkeypatch):
         desktop[110:155, 260:385, :3] = 200  # Feed scroll/change only.
         await scan_both()
         clock[0] += .25
-        await scan_both()  # Quiet tick reads only the dirty feed crop.
+        await scan_both()  # Quiet tick reads only the dirty feed strip.
         return static
 
     static = asyncio.run(exercise())
     assert fake.preview_capture.calls == [nav, feed] * 4
-    assert fake.capture.calls.count(nav) == 1
-    assert fake.capture.calls.count(feed) == 2
-    assert len(ocr.calls) == 3
-    assert fake.zone_states[0]['tracker'].regions['1'] is static
-    assert static.revision == 0 and static.processed and static.delivered
+    assert len(ocr.calls) == 3  # Each zone once, then only the changed feed.
+    assert fake.zone_states[0]['scene'].segments['watch-0-1'] is static
+    assert static.key == static.shown_key and not static.pending_key
     assert removed == []
 
 
@@ -110,55 +113,44 @@ def test_fullscreen_dirty_tile_does_not_touch_static_tile(monkeypatch):
         overview = fake.preview_capture.capture(bounds)
         for index, (core, padded, (x0, y0, x1, y1)) in enumerate(
                 whole_screen_tiles(bounds, overview.shape)):
-            await Engine._scan_ocr_zone(fake, index, padded, 1, 'X', np, 0,
+            await fake._scan_ocr_zone(index, padded, 1, 'X', np, 0,
                 preview=overview[y0:y1, x0:x1], core=core, multiple=True)
 
     async def exercise():
         await scan_all()
-        static = fake.zone_states[0]['tracker'].regions['1']
-        static.processed = True
-        static.delivered.add((0, normalize('A readable English sentence.')))
-        initial_full = len(fake.capture.calls)
+        static = fake.zone_states[0]['scene'].segments['watch-0-1']
+        static.shown_key = static.key
         initial_ocr = len(ocr.calls)
         clock[0] += .1
         desktop[760:840, 1350:1500, :3] = 240  # Other corner only.
         await scan_all()
         clock[0] += .25
         await scan_all()  # Debounced OCR of only the changed tile.
-        return static, initial_full, initial_ocr
+        return static, initial_ocr
 
-    static, initial_full, initial_ocr = asyncio.run(exercise())
-    assert len(fake.capture.calls) == initial_full + 1
+    static, initial_ocr = asyncio.run(exercise())
     assert len(ocr.calls) == initial_ocr + 1
-    assert fake.zone_states[0]['tracker'].regions['1'] is static
-    assert static.revision == 0 and static.processed and static.delivered
+    assert fake.zone_states[0]['scene'].segments['watch-0-1'] is static
+    assert static.key == static.shown_key
     assert removed == []
 
 
 def test_click_visual_change_with_identical_words_does_not_remove_or_translate():
+    from arabic_lens.scene import TextScene
     text = 'You need to find the key.'
     box = Rect(10, 10, 180, 30)
     pixels = np.zeros((80, 250, 4), dtype=np.uint8)
-    region = TrackedRegion('1', box, np.zeros((20, 48), dtype=np.uint8), 0, 0)
-    region.confirmed_sources = (normalize(text),)
-    region.confirmed_boxes = (box,)
-    region.confirmed_delivered = {(0, normalize(text))}
-    tracker = RegionTracker()
-    tracker.regions['1'] = region
-    translated, removed, moved = [], [], []
-    translator = SimpleNamespace(translate=lambda source: (_ for _ in ()).throw(
-        AssertionError('Unchanged text must not be translated again')))
-    fake = SimpleNamespace(tracker=tracker, generation=1, translator=translator,
-        anchors=SimpleNamespace(items={}), source_moved=SimpleNamespace(emit=lambda *args: moved.append(args)),
-        removed=SimpleNamespace(emit=removed.append), translated=SimpleNamespace(emit=translated.append),
-        settings=Settings())
-    async def verify():
-        await Engine._region(fake, region, pixels, Rect(0, 0, 250, 80), 'Game', 1,
-            capture_rect=Rect(0, 0, 250, 80), tracker=tracker,
-            precomputed=[TextBlock(text, box)])
-    asyncio.run(verify())
-    assert not removed and not translated and not moved
-    assert region.delivered == {(0, normalize(text))}
+    pixels[15:35, 15:185:3, :3] = 240
+    scene = TextScene('watch-')
+    scene.reconcile([TextBlock(text, box)], [Rect(0, 0, 250, 80)], pixels, 0)
+    segment = scene.segments['watch-1']
+    segment.shown_key = segment.key
+    clicked = pixels.copy()
+    clicked[15:35, 15:185:3, :3] = 150  # Hover/pressed colour, same lettering.
+    changes = scene.reconcile([TextBlock(text, box)], [Rect(0, 0, 250, 80)], clicked, 1)
+    assert changes == ([], [], [], [], [])
+    assert scene.segments['watch-1'] is segment
+    assert scene.due(5, image=clicked) == []  # Nothing to retranslate.
 
 
 def test_quick_capture_does_not_reset_active_watch_zones():
@@ -235,23 +227,41 @@ def test_continuous_scroll_debounces_ocr_and_does_not_queue_stale_frames(monkeyp
     fake, ocr, _ = fake_ocr_engine(desktop, Settings(watch_areas=[[0, 0, 300, 220]]))
 
     async def exercise():
-        await Engine._scan_ocr_zone(fake, 0, zone, 1, 'X', np, 0)
+        await fake._scan_ocr_zone(0, zone, 1, 'X', np, 0)
         initial = len(ocr.calls)
-        for step in range(8):
+        for step in range(6):  # 0.6 s of continuous motion
             clock[0] += .1
             desktop[90:180, 50:230, :3] = 0
             desktop[95 + step:115 + step, 50:230, :3] = 180
-            await Engine._scan_ocr_zone(fake, 0, zone, 1, 'X', np, 0)
+            await fake._scan_ocr_zone(0, zone, 1, 'X', np, 0)
         moving = len(ocr.calls)
         clock[0] += .25
-        await Engine._scan_ocr_zone(fake, 0, zone, 1, 'X', np, 0)
+        await fake._scan_ocr_zone(0, zone, 1, 'X', np, 0)
         quiet = len(ocr.calls)
         return initial, moving, quiet
 
     initial, moving, quiet = asyncio.run(exercise())
     assert initial == 1
     assert moving == initial  # No OCR backlog while frames keep moving.
-    assert quiet == initial + 1  # Latest stable frame alone is OCR'd.
+    assert quiet == initial + 1  # The latest stable frame alone is read.
+
+
+def test_continuous_change_still_reads_at_a_capped_cadence(monkeypatch):
+    """Endless motion (video, fast chat) cannot starve text forever."""
+    clock = [100.0]
+    monkeypatch.setattr(engine_module.time, 'monotonic', lambda: clock[0])
+    desktop = np.zeros((220, 300, 4), dtype=np.uint8)
+    zone = Rect(0, 0, 300, 220)
+    fake, ocr, _ = fake_ocr_engine(desktop, Settings(watch_areas=[[0, 0, 300, 220]]))
+
+    async def exercise():
+        for step in range(20):  # 2 s, a change every 100 ms
+            desktop[:, :, :3] = 0
+            desktop[20 + step * 4:45 + step * 4, 30:200, :3] = 220
+            await fake._scan_ocr_zone(0, zone, 1, 'X', np, 0)
+            clock[0] += .1
+    asyncio.run(exercise())
+    assert 2 <= len(ocr.calls) <= 5
 
 
 def test_supplied_x_video_static_nav_and_scrolling_feed():

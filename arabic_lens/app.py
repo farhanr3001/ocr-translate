@@ -122,6 +122,8 @@ class Application:
         self.engine.removed.connect(self.overlays.remove_group)
         self.engine.removed.connect(self.source_monitor.forget)
         self.engine.cleared.connect(self.clear_overlays)
+        self.engine.watch_cleared.connect(self.clear_watch_overlays)
+        self.engine.own_overlays = self.overlays.capture_visible_rects
         self.engine.watch_changed.connect(self.watch_changed)
         self.engine.status.connect(self.on_status)
         self.engine.tested.connect(self.tested)
@@ -672,7 +674,15 @@ class Application:
         if result.id.startswith('watch-') and result.source_window and self.engine.app_blocks.blocked(result.source_window[0]):
             return
         if self.source_monitor.accept(result):
-            if result.source.strip() == result.arabic.strip() and not result.notice:
+            import re
+            from .chat import split_speaker
+            # A chat/dialogue line keeps an overlay even when its message has
+            # nothing to translate ("machiav__: gta 4"), so the column of
+            # translated lines stays uniform instead of being interrupted.
+            chat_line = bool(split_speaker(result.source)[0])
+            if not result.notice and not chat_line and (result.source.strip() == result.arabic.strip()
+                    or not re.search('[؀-ۿ]', result.arabic)):
+                # Nothing was translated (names, emotes, acronyms, links).
                 self.overlays.remove(result.id, immediate=True)
             else:
                 self.overlays.show(result)
@@ -800,6 +810,15 @@ class Application:
         self.overlays.clear()
         self.progress.clear()
         self.source_monitor.clear()
+        self.clear_debug()
+
+    def clear_watch_overlays(self):
+        """Watch restarted or changed context: Quick results stay on screen."""
+        for key in list(self.overlays.windows):
+            if key.startswith('watch-'):
+                self.overlays.remove(key)
+                self.source_monitor.forget_exact(key)
+        self.progress.clear()
         self.clear_debug()
 
     def diagnostics(self, info):

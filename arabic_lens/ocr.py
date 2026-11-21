@@ -44,6 +44,9 @@ class WindowsOcrProvider:
                 operation.cancel()
                 raise
             lines = []
+            # Positions of values left untranslated in the game ("85 / 100"),
+            # so overlays can keep clear of them.
+            self.last_values = []
             from .layout import TextContainerDetector
             panels = TextContainerDetector().detect(image)
             prose = {'you', 'your', 'i', 'my', 'the', 'a', 'an', 'to', 'before', 'after', 'until', 'then', 'find', 'need', 'have', 'wait', 'collect', 'bring', 'is', 'are'}
@@ -85,7 +88,10 @@ class WindowsOcrProvider:
                 for container, words in runs:
                     numeric_count = sum(bool(re.fullmatch(r'\d+(?:\.\d+)?', w.text)) for w in words)
                     value_sentence = any(re.search(r'[$£€%()]|\d+[.,]\d|\d+x\b', w.text) for w in words) or bool(re.match(r'^\s*[•●▪·*\-–]', ' '.join(w.text for w in words)))
-                    if numeric_count and len(words) <= min(4, numeric_count * 3) and not value_sentence and not is_prose_line and not any(w.text.casefold() in prose for w in words):
+                    # A number inside a phrase ("Level 7 Ranger") belongs to it;
+                    # only label/value rows ("Health 85 / 100") are split.
+                    phrase_number = bool(words) and not re.fullmatch(r'[\d.,/%]+', words[-1].text)
+                    if numeric_count and len(words) <= min(4, numeric_count * 3) and not value_sentence and not is_prose_line and not phrase_number and not any(w.text.casefold() in prose for w in words):
                         # Values stay in the game, untouched. Each label has its
                         # own bounds and inherits its own cell, never a grid union.
                         label = []
@@ -93,6 +99,9 @@ class WindowsOcrProvider:
                             if re.fullmatch(r'\d+(?:\.\d+)?', word.text):
                                 append_words(label, container, standalone=True)
                                 label = []
+                                box = word.bounding_rect
+                                self.last_values.append(Rect(round(box.x / scale), round(box.y / scale),
+                                    round(box.width / scale), round(box.height / scale)))
                             else:
                                 label.append(word)
                         append_words(label, container, standalone=True)
@@ -128,7 +137,9 @@ class OcrService:
         self.last_audit = {}
 
     async def read(self, image, manual=False):
+        self.area_width = image.shape[1]
         self.last_lines = await self.provider.recognize(image)
+        self.last_values = [TextBlock('', r) for r in getattr(self.provider, 'last_values', [])]
         blocks = self._group(self.last_lines, manual)
         accepted = [b for b in blocks if not self.text_filter.reason(b, manual)]
         # Audit changed crops even when the first pass found some text. Finding
@@ -192,7 +203,8 @@ class OcrService:
     def _group(self, lines, manual):
         # Filter complete reconstructed blocks, not individual wrapped lines.
         from .text import align_list_columns
-        return align_list_columns(group_lines(lines))
+        from .chat import join_speaker_runs
+        return align_list_columns(group_lines(join_speaker_runs(lines), getattr(self, 'area_width', None)))
 
 
 def residual_text_regions(image, recognized):

@@ -259,36 +259,7 @@ def test_preset_target_is_brought_forward_before_selector(monkeypatch):
     assert focused == [1234] and selected
 
 
-def test_watch_scanner_captures_each_zone_only_when_its_preview_changes():
-    class Capture:
-        def __init__(self, preview=False):
-            self.calls = []
-            self.version = {10: 1, 300: 1}
-            self.preview = preview
-        def capture(self, bounds):
-            self.calls.append(bounds)
-            return np.full((18, 24, 4), self.version[bounds.x], dtype=np.uint8)
-    full, preview = Capture(), Capture(preview=True)
-    fake = SimpleNamespace(
-        settings=Settings(watch_areas=[[10, 10, 100, 100], [300, 10, 100, 100]]),
-        zone_states={}, tracker=RegionTracker(), preview_capture=preview, capture=full,
-        anchors=SimpleNamespace(items={}), detector=SimpleNamespace(detect=lambda image, sensitivity: []),
-        jobs={}, backoff=0, generation=1)
-    one, two = Rect(10, 10, 100, 100), Rect(300, 10, 100, 100)
-    async def scan():
-        await Engine._scan_zone(fake, 0, one, 1, 'Game', np, 0)
-        await Engine._scan_zone(fake, 1, two, 1, 'Game', np, 0)
-        await Engine._scan_zone(fake, 0, one, 1, 'Game', np, 0)
-        await Engine._scan_zone(fake, 1, two, 1, 'Game', np, 0)
-        preview.version[300] = 50
-        await Engine._scan_zone(fake, 0, one, 1, 'Game', np, 0)
-        await Engine._scan_zone(fake, 1, two, 1, 'Game', np, 0)
-    asyncio.run(scan())
-    assert full.calls == [one, two, two]
-    assert len(preview.calls) == 6
-
-
-def test_scroll_zone_does_not_reprocess_static_zone_and_static_overlay_stays_alive():
+def test_watch_scanner_captures_each_zone_only_when_its_preview_changes(watch_engine):
     class Capture:
         def __init__(self):
             self.calls = []
@@ -296,29 +267,48 @@ def test_scroll_zone_does_not_reprocess_static_zone_and_static_overlay_stays_ali
         def capture(self, bounds):
             self.calls.append(bounds)
             return np.full((18, 24, 4), self.version[bounds.x], dtype=np.uint8)
-    preview, full = Capture(), Capture()
-    alive = []
-    anchor = SimpleNamespace(expires=float('inf'))
-    fake = SimpleNamespace(settings=Settings(watch_areas=[[10, 10, 100, 100], [300, 10, 100, 100]]),
-        zone_states={}, tracker=RegionTracker(), preview_capture=preview, capture=full,
-        anchors=SimpleNamespace(items={'watch-0-1': anchor}),
-        detector=SimpleNamespace(detect=lambda image, sensitivity: [Rect(1, 1, 18, 10)]),
-        jobs={}, backoff=0, generation=1, region_alive=SimpleNamespace(emit=alive.append),
-        _follow_sources=lambda *args, **kwargs: None)
+    full, preview = Capture(), Capture()
+    fake, _ = watch_engine(Settings(watch_areas=[[10, 10, 100, 100], [300, 10, 100, 100]]), full, preview)
     one, two = Rect(10, 10, 100, 100), Rect(300, 10, 100, 100)
     async def scan():
-        await Engine._scan_zone(fake, 0, one, 1, 'Game', np, 0)
-        await Engine._scan_zone(fake, 1, two, 1, 'Game', np, 0)
-        static = fake.zone_states[0]['tracker'].regions['1']
-        static.processed = True
-        static.delivered.add('home')
+        for _ in range(2):
+            await fake._scan_ocr_zone(0, one, 1, 'Game', np, 0)
+            await fake._scan_ocr_zone(1, two, 1, 'Game', np, 0)
         preview.version[300] = 50
-        await Engine._scan_zone(fake, 1, two, 1, 'Game', np, 0)
-        await Engine._scan_zone(fake, 0, one, 1, 'Game', np, 0)
+        await fake._scan_ocr_zone(0, one, 1, 'Game', np, 0)
+        await fake._scan_ocr_zone(1, two, 1, 'Game', np, 0)
     asyncio.run(scan())
     assert full.calls == [one, two, two]
-    assert fake.zone_states[0]['tracker'].regions['1'].revision == 0
-    assert alive == ['watch-0-1'] and anchor.expires == float('inf')
+    assert len(preview.calls) == 6
+
+def test_scroll_zone_does_not_reprocess_static_zone_and_static_overlay_stays_alive(watch_engine):
+    class Capture:
+        def __init__(self, size):
+            self.calls = []
+            self.version = {10: 200, 300: 200}
+            self.size = size
+        def capture(self, bounds):
+            self.calls.append(bounds)
+            image = np.zeros(self.size + (4,), dtype=np.uint8)
+            image[2:12, 2:20, :3] = self.version[bounds.x]
+            return image
+    preview, full = Capture((18, 24)), Capture((100, 100))
+    fake, ocr = watch_engine(Settings(watch_areas=[[10, 10, 100, 100], [300, 10, 100, 100]]), full, preview)
+    one, two = Rect(10, 10, 100, 100), Rect(300, 10, 100, 100)
+    async def scan():
+        await fake._scan_ocr_zone(0, one, 1, 'Game', np, 0)
+        await fake._scan_ocr_zone(1, two, 1, 'Game', np, 0)
+        static = fake.zone_states[0]['scene'].segments['watch-0-1']
+        static.shown_key = static.key
+        preview.version[300] = 120
+        full.version[300] = 120
+        await fake._scan_ocr_zone(1, two, 1, 'Game', np, 0)
+        await fake._scan_ocr_zone(0, one, 1, 'Game', np, 0)
+        return static
+    static = asyncio.run(scan())
+    assert full.calls == [one, two, two]
+    assert fake.zone_states[0]['scene'].segments['watch-0-1'] is static
+    assert static.key == static.shown_key and fake.events.removed == []
     manager = OverlayManager(fake.settings, lambda text: None)
     starts = []
     manager.windows = {'watch-0-1': SimpleNamespace(appearance=SimpleNamespace(persistence=True, duration=12),
@@ -328,11 +318,10 @@ def test_scroll_zone_does_not_reprocess_static_zone_and_static_overlay_stays_ali
     # watch area must not restart one.
     assert starts == []
 
-
-def test_changes_outside_all_watch_areas_never_reprocess_selected_text():
+def test_changes_outside_all_watch_areas_never_reprocess_selected_text(watch_engine):
     screen = np.zeros((90, 220, 4), dtype=np.uint8)
     selected = Rect(10, 10, 70, 45)
-    screen[10:55, 10:80] = 100
+    screen[14:34, 14:70] = 200
 
     class Capture:
         def __init__(self):
@@ -343,36 +332,22 @@ def test_changes_outside_all_watch_areas_never_reprocess_selected_text():
             return screen[bounds.y:bounds.bottom, bounds.x:bounds.right].copy()
 
     preview, full = Capture(), Capture()
-    detector_calls = []
-
-    def detect(image, sensitivity):
-        detector_calls.append(True)
-        return [Rect(4, 4, 55, 20)]
-
-    fake = SimpleNamespace(settings=Settings(watch_areas=[[10, 10, 70, 45]]),
-        zone_states={}, tracker=RegionTracker(), preview_capture=preview, capture=full,
-        anchors=SimpleNamespace(items={}), detector=SimpleNamespace(detect=detect),
-        jobs={}, backoff=0, generation=1, region_alive=SimpleNamespace(emit=lambda group: None))
+    fake, ocr = watch_engine(Settings(watch_areas=[[10, 10, 70, 45]]), full, preview)
 
     async def scan():
-        await Engine._scan_zone(fake, 0, selected, 1, 'Browser', np, 0)
-        region = fake.zone_states[0]['tracker'].regions['1']
-        region.processed = True
-        region.delivered.add('static text')
-        first_seen = region.seen
+        await fake._scan_ocr_zone(0, selected, 1, 'Browser', np, 0)
+        segment = fake.zone_states[0]['scene'].segments['watch-1']
+        segment.shown_key = segment.key
         screen[60:85, 100:200] = 240  # Scroll/motion entirely outside the selected area.
-        await Engine._scan_zone(fake, 0, selected, 1, 'Browser', np, 0)
-        return region, first_seen
+        await fake._scan_ocr_zone(0, selected, 1, 'Browser', np, 0)
+        return segment
 
-    region, first_seen = asyncio.run(scan())
+    segment = asyncio.run(scan())
     assert len(preview.calls) == 2  # Cheap local change probe only.
     assert full.calls == [selected]
-    assert detector_calls == [True]
-    assert region.revision == 0 and region.processed
-    assert region.delivered == {'static text'}
-    assert region.seen >= first_seen
-    assert fake.zone_states[0]['tracker'].regions['1'] is region
-
+    assert len(ocr.calls) == 1
+    assert fake.zone_states[0]['scene'].segments['watch-1'] is segment
+    assert segment.key == segment.shown_key
 
 def test_vanished_region_expires_without_reprocessing_unchanged_zone():
     from arabic_lens.detection import TrackedRegion
@@ -383,7 +358,9 @@ def test_vanished_region_expires_without_reprocessing_unchanged_zone():
     assert tracker.regions == {}
 
 
-def test_fullscreen_tiles_change_independently_and_keep_static_text():
+def test_fullscreen_tiles_change_independently_and_keep_static_text(watch_engine):
+    from arabic_lens.scene import Segment
+    from arabic_lens.models import TextBlock
     bounds = Rect(0, 0, 1600, 900)
     overview = np.zeros((180, 320, 4), dtype=np.uint8)
     tiles = list(whole_screen_tiles(bounds, overview.shape))
@@ -397,25 +374,19 @@ def test_fullscreen_tiles_change_independently_and_keep_static_text():
             return np.full((area.h, area.w, 4), 100, dtype=np.uint8)
 
     full = Capture()
-    detected = []
-    fake = SimpleNamespace(settings=Settings(watch_fullscreen=True), zone_states={},
-        tracker=RegionTracker(), preview_capture=SimpleNamespace(), capture=full,
-        anchors=SimpleNamespace(items={}), detector=SimpleNamespace(detect=lambda image, sensitivity: detected.append(True) or []),
-        jobs={}, backoff=0, generation=1, region_alive=SimpleNamespace(emit=lambda group: None))
+    fake, ocr = watch_engine(Settings(watch_fullscreen=True), full, SimpleNamespace())
 
     async def scan_all():
         for index, (core, padded, (x0, y0, x1, y1)) in enumerate(tiles):
-            await Engine._scan_zone(fake, index, padded, 1, 'Game', np, 0,
+            await fake._scan_ocr_zone(index, padded, 1, 'Game', np, 0,
                 preview=overview[y0:y1, x0:x1], core=core, multiple=True)
 
     async def exercise():
         await scan_all()
-        from arabic_lens.detection import TrackedRegion
-        static = TrackedRegion('1', Rect(10, 10, 80, 20), np.zeros((20, 48), dtype=np.uint8), 0, 0)
-        static.processed = True
-        static.delivered.add('sidebar text')
-        fake.zone_states[0]['tracker'].regions['1'] = static
-        fake.zone_states[0]['seen_ids'].add('1')
+        block = TextBlock('Sidebar text', Rect(10, 10, 80, 20))
+        static = Segment('watch-0-1', block, block.rect, 'sidebar text', 0, 0, 20)
+        static.shown_key = static.key
+        fake.zone_states[0]['scene'].segments[static.id] = static
         x0, y0, x1, y1 = tiles[-1][2]
         overview[y0:y1, x0:x1] = 200  # Scrolling in a different tile.
         await scan_all()
@@ -423,10 +394,8 @@ def test_fullscreen_tiles_change_independently_and_keep_static_text():
 
     static = asyncio.run(exercise())
     assert len(full.calls) == len(tiles) + 1
-    assert len(detected) == len(tiles) + 1
-    assert static.processed and static.delivered == {'sidebar text'} and static.revision == 0
-    assert fake.zone_states[0]['tracker'].regions['1'] is static
-
+    assert fake.zone_states[0]['scene'].segments['watch-0-1'] is static
+    assert static.key == static.shown_key and fake.events.removed == []
 
 def test_fullscreen_start_skips_selection_and_preserves_previous_areas():
     from PySide6.QtTest import QTest
@@ -468,7 +437,7 @@ def test_unchanged_text_in_a_dirty_tile_skips_fingerprinting(monkeypatch):
     assert tracker.regions['1'].revision == 0
 
 
-def test_video_compression_noise_does_not_reprocess_a_static_watch_area():
+def test_video_compression_noise_does_not_reprocess_a_static_watch_area(watch_engine):
     area = Rect(220, 90, 175, 575)
     class Capture:
         def __init__(self):
@@ -477,11 +446,7 @@ def test_video_compression_noise_does_not_reprocess_a_static_watch_area():
             self.calls += 1
             return np.zeros((100, 100, 4), dtype=np.uint8)
     full = Capture()
-    detections = []
-    fake = SimpleNamespace(settings=Settings(watch_areas=[[area.x, area.y, area.w, area.h]]),
-        zone_states={}, tracker=RegionTracker(), preview_capture=None, capture=full,
-        detector=SimpleNamespace(detect=lambda image, sensitivity: detections.append(True) or []),
-        anchors=SimpleNamespace(items={}), jobs={}, backoff=0, generation=1)
+    fake, ocr = watch_engine(Settings(watch_areas=[[area.x, area.y, area.w, area.h]]), full, None)
     still = np.zeros((180, 320, 4), dtype=np.uint8)
     noisy = still.copy()
     noisy[20:25, 20:23] = 18  # Fifteen changed pixels, like the recorded X navigation.
@@ -489,11 +454,9 @@ def test_video_compression_noise_does_not_reprocess_a_static_watch_area():
     changed[20:35, 20:30] = 180  # A real text/panel change.
     async def scan():
         for preview in (still, noisy, changed):
-            await Engine._scan_zone(fake, 0, area, 1, 'X', np, 0, preview=preview)
+            await fake._scan_ocr_zone(0, area, 1, 'X', np, 0, preview=preview)
     asyncio.run(scan())
     assert full.calls == 2
-    assert detections == [True, True]
-
 
 def test_watch_button_restores_target_focus_before_fullscreen_or_previous_starts(monkeypatch):
     import arabic_lens.app as app_module

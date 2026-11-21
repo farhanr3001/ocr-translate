@@ -31,7 +31,7 @@ class OfflineTranslationProvider:
             self.model = ctranslate2.Translator(str(root / 'model'), device='cpu',
                 compute_type='int8', inter_threads=1, intra_threads=2)
 
-    def _translate(self, text, cancelled=None):
+    def _translate(self, text, cancelled=None, keep=()):
         try:
             if cancelled and cancelled.is_set():
                 raise asyncio.CancelledError()
@@ -41,7 +41,7 @@ class OfflineTranslationProvider:
             text = clean_source_text(text)
             original_text = text
             replacements = {}
-            for token in protected_acronyms(text):
+            for token in list(dict.fromkeys(protected_acronyms(text) + list(keep))):
                 index = len(replacements)
                 marker = f'ZXQ{index}ZX'
                 while marker in text:
@@ -91,8 +91,8 @@ class OfflineTranslationProvider:
         """One CPU worker, same beam quality, several independent inputs."""
         self._initialize()
         answers = [None] * len(entries)
-        plain = [(i,text) for i,(text,_,cancelled) in enumerate(entries)
-                 if not cancelled.is_set() and len(text) <= 450 and not protected_acronyms(text)]
+        plain = [(i,text) for i,(text,_,cancelled,keep) in enumerate(entries)
+                 if not cancelled.is_set() and len(text) <= 450 and not protected_acronyms(text) and not keep]
         if plain:
             try:
                 results = self.model.translate_batch([self.tokenizer.encode(clean_source_text(text), out_type=str)
@@ -103,12 +103,12 @@ class OfflineTranslationProvider:
             except Exception:
                 # One malformed batch must not discard all the independent texts.
                 pass
-        for i,(text,_,cancelled) in enumerate(entries):
+        for i,(text,_,cancelled,keep) in enumerate(entries):
             if cancelled.is_set():
                 continue
             if answers[i] is None:
                 try:
-                    answers[i] = self._translate(text,cancelled)
+                    answers[i] = self._translate(text,cancelled,keep)
                 except asyncio.CancelledError:
                     pass
                 except Exception as exc:
@@ -127,16 +127,16 @@ class OfflineTranslationProvider:
                 answers = await asyncio.get_running_loop().run_in_executor(self.executor,self._batch,batch)
             except Exception:
                 answers = [TranslationError('local_unavailable')] * len(batch)
-            for (_,future,_), answer in zip(batch,answers):
+            for (_,future,_,_), answer in zip(batch,answers):
                 if not future.done():
                     if isinstance(answer,Exception): future.set_exception(answer)
                     elif answer is None: future.cancel()
                     else: future.set_result(answer)
 
-    async def translate(self, text):
+    async def translate(self, text, keep=()):
         cancelled = threading.Event()
         future = asyncio.get_running_loop().create_future()
-        self.pending.append((text,future,cancelled))
+        self.pending.append((text,future,cancelled,tuple(keep)))
         if self.dispatcher is None or self.dispatcher.done():
             self.dispatcher = asyncio.create_task(self._dispatch())
         try:
@@ -149,7 +149,7 @@ class OfflineTranslationProvider:
         if self.dispatcher:
             self.dispatcher.cancel()
             await asyncio.gather(self.dispatcher,return_exceptions=True)
-        for _,future,cancelled in self.pending:
+        for _,future,cancelled,_ in self.pending:
             cancelled.set(); future.cancel()
         self.pending.clear()
         self.executor.shutdown(wait=False, cancel_futures=True)
@@ -163,9 +163,10 @@ class TranslationProvider:
         self.local = OfflineTranslationProvider()
         self.remote = HttpTranslationProvider(settings)
 
-    async def translate(self, text):
-        provider = self.local if self.settings.provider == 'Built-in offline' else self.remote
-        return await provider.translate(text)
+    async def translate(self, text, keep=()):
+        if self.settings.provider == 'Built-in offline':
+            return await self.local.translate(text, keep=keep)
+        return await self.remote.translate(text)
 
     async def close(self):
         await self.local.close()

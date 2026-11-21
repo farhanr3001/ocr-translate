@@ -36,6 +36,11 @@ class OverlaySettings:
     fade_ms: int = 180
     duration: int = 12
     persistence: bool = True
+    # Quick Translate overlays: 'source' stays until the selected English
+    # changes or disappears; 'timer' also hides after quick_seconds
+    # (0 = automatic reading time based on the translation's length).
+    quick_lifetime: str = "source"
+    quick_seconds: int = 0
 
 
 @dataclass
@@ -160,6 +165,11 @@ class SettingsService:
             self.settings = Settings(**{k: v for k, v in data.items() if k in Settings.__dataclass_fields__})
             self.settings.overlay = OverlaySettings(**{k: v for k, v in overlay.items() if k in OverlaySettings.__dataclass_fields__})
             self.settings.overlay.persistence = True
+            if self.settings.overlay.quick_lifetime not in ('source', 'timer'):
+                self.settings.overlay.quick_lifetime = 'source'
+            if not isinstance(self.settings.overlay.quick_seconds, int) or isinstance(self.settings.overlay.quick_seconds, bool):
+                self.settings.overlay.quick_seconds = 0
+            self.settings.overlay.quick_seconds = max(0, min(300, self.settings.overlay.quick_seconds))
             self.settings.scan_ms = max(250, min(3000, self.settings.scan_ms))
             self.settings.max_regions = max(1, min(128, self.settings.max_regions))
             area = self.settings.watch_region

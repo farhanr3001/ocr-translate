@@ -144,10 +144,16 @@ class TranslationService:
                  'API':'واجهة برمجة التطبيقات', 'FPS':'إطارات في الثانية'}
         if text.strip() in terms:
             return terms[text.strip()]
+        from .chat import split_speaker, prepare_chat, has_translatable_words
+        # Chat/dialogue speaker ("Aya: ", "23:33 MrMoonie: ") stays verbatim.
+        speaker, text = split_speaker(text)
         prefix = re.match(r'^(\s*(?:[•●▪·*\-–]\s*|\d+[.)]\s+))', text)
-        bullet = prefix.group() if prefix else ''
-        body = text[len(bullet):]
-        translated = clean_translation(await self.provider.translate(body))
+        bullet = speaker + (prefix.group() if prefix else '')
+        body = text[len(prefix.group()) if prefix else 0:]
+        body, keep = prepare_chat(body, chat=bool(speaker))
+        if not has_translatable_words(body):
+            return bullet + body  # Only emotes/acronyms/links: nothing to translate.
+        translated = clean_translation(await self._provider_translate(body, keep))
         restored = restore_values(body, translated)
         if restored is not None:
             return bullet + restored
@@ -159,6 +165,14 @@ class TranslationService:
             start = match.end()
         parts.append(await self._fragment(body[start:]))
         return bullet + ' '.join(part.strip() for part in parts if part.strip())
+
+    async def _provider_translate(self, text, keep=()):
+        if keep:
+            try:
+                return await self.provider.translate(text, keep=tuple(keep))
+            except TypeError:
+                pass  # Provider without token protection (tests, remote).
+        return await self.provider.translate(text)
 
     async def _fragment(self, text):
         from .text import clean_translation

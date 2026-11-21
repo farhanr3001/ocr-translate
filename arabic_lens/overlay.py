@@ -83,10 +83,23 @@ class ArabicSurface(QWidget):
         self.setFixedSize(round(ideal) + a.padding * 2, round(self.document.size().height()) + a.padding * 2)
         self.update()
 
-    def fit_to_source(self, source, max_extra=0):
-        """Keep a readable base size; let Arabic use modest extra width/height."""
+    def fit_to_source(self, source, max_extra=0, line_height=0):
+        """Keep a readable base size; let Arabic use modest extra width/height.
+
+        With `line_height` (one source text line, logical px) the Arabic takes
+        the size of the text it covers, so every line of the same size gets
+        the same Arabic size and a covering box never exceeds its line pitch.
+        A single source line stays on one Arabic line, using spare width.
+        """
         from dataclasses import replace
         self.fitted = True
+        if line_height:
+            # Match the English text's size (never larger than the preset).
+            line_font = max(12, min(self.appearance.font_size, round(line_height * 1.0)))
+            self.appearance = replace(self.appearance, font_size=line_font)
+            if source.h < line_height * 1.6:
+                return self._fit_single_line(source, max_extra, line_font)
+            return self._fit_lines(source, max_extra, line_font, line_height)
         cell = self.appearance.padding <= 2 and self.appearance.border_width == 0
         # A 30–36 px source is often two desktop text lines, not one large
         # label. Keep its paragraph width instead of stretching it sideways.
@@ -124,6 +137,118 @@ class ArabicSurface(QWidget):
             self.document.setTextWidth(width - padding * 2)
         self.setFixedSize(width, max(height, round(self.document.size().height()) + padding * 2))
         self.source_box_height = height
+
+    def _fit_lines(self, source, max_extra, line_font, line_height):
+        """A wrapped source paragraph: same type size as its own lines, using
+        spare width so the Arabic needs no more lines than the English."""
+        from dataclasses import replace
+        self.fit_margin = 2
+        padding = 0  # Lines of Arabic at the source size already fill the box.
+        self.appearance = replace(self.appearance, padding=padding, background_opacity=100)
+        font = self.document.defaultFont()
+        font.setPixelSize(line_font)
+        self.document.setDefaultFont(font)
+        option = self.document.defaultTextOption()
+        option.setWrapMode(QTextOption.WrapAtWordBoundaryOrAnywhere)
+        self.document.setDefaultTextOption(option)
+        box = source.h + self.fit_margin * 2
+        extra = min(60, max(0, max_extra))  # Stay close to the paragraph's own width.
+        widths = [source.w, source.w + extra // 2, source.w + extra]
+        for width in widths:
+            self.document.setTextWidth(width)
+            if self.document.size().height() + padding * 2 <= box:
+                break
+        self.setFixedSize(round(self.document.textWidth()) + padding * 2,
+                          max(box, round(self.document.size().height()) + padding * 2))
+        self.source_box_height = box
+        self.single_line = True  # Sized from its own lines: no later shrinking.
+
+    def _fit_single_line(self, source, max_extra, line_font):
+        from dataclasses import replace
+        self.fit_margin = 2
+        padding = 1
+        self.appearance = replace(self.appearance, padding=padding, background_opacity=100)
+        font = self.document.defaultFont()
+        font.setPixelSize(line_font)
+        self.document.setDefaultFont(font)
+        option = self.document.defaultTextOption()
+        option.setWrapMode(QTextOption.NoWrap)
+        self.document.setDefaultTextOption(option)
+        self.document.setTextWidth(-1)
+        widest = source.w + max(0, max_extra)
+        if self.document.idealWidth() + padding * 2 > widest:
+            # Far longer than the room beside it: wrap rather than cover more.
+            option.setWrapMode(QTextOption.WrapAtWordBoundaryOrAnywhere)
+            self.document.setDefaultTextOption(option)
+            self.document.setTextWidth(widest - padding * 2)
+        else:
+            self.document.setTextWidth(max(source.w, self.document.idealWidth() + 1))
+        width = round(self.document.textWidth()) + padding * 2
+        height = max(source.h + self.fit_margin * 2, round(self.document.size().height()) + padding * 2)
+        self.setFixedSize(max(width, source.w + self.fit_margin * 2), height)
+        self.source_box_height = source.h + self.fit_margin * 2
+        self.single_line = True
+
+    def limit_right(self, max_width):
+        """Keep a fitted overlay within `max_width`, shrinking type if needed
+        (never below a readable minimum; it may then wrap to two lines)."""
+        max_width = max(24, int(max_width))
+        if self.width() <= max_width:
+            return
+        padding = self.appearance.padding
+        if getattr(self, 'single_line', False):
+            # One size everywhere: wrap at the limit instead of shrinking.
+            option = self.document.defaultTextOption()
+            option.setWrapMode(QTextOption.WrapAtWordBoundaryOrAnywhere)
+            self.document.setDefaultTextOption(option)
+            self.document.setTextWidth(max_width - padding * 2)
+            self.setFixedSize(max_width, max(getattr(self, 'source_box_height', 0),
+                                             round(self.document.size().height()) + padding * 2))
+            self.update()
+            return
+        font = self.document.defaultFont()
+        minimum = max(12, round(self.appearance.font_size * .7))
+        option = self.document.defaultTextOption()
+        option.setWrapMode(QTextOption.NoWrap)
+        self.document.setDefaultTextOption(option)
+        self.document.setTextWidth(-1)
+        while font.pixelSize() > minimum and self.document.idealWidth() > max_width - padding * 2:
+            font.setPixelSize(font.pixelSize() - 1)
+            self.document.setDefaultFont(font)
+        if self.document.idealWidth() > max_width - padding * 2:
+            option.setWrapMode(QTextOption.WrapAtWordBoundaryOrAnywhere)
+            self.document.setDefaultTextOption(option)
+        self.document.setTextWidth(max_width - padding * 2)
+        self.setFixedSize(max_width, max(self.height(), round(self.document.size().height()) + padding * 2))
+        self.update()
+
+    def limit_height(self, max_height, max_width):
+        """Fit within `max_height`: widen up to `max_width`, then reduce the
+        type size (to 60% at most). Only if still impossible does it keep the
+        smallest readable size and take the extra height."""
+        max_height, max_width = int(max_height), int(max_width)
+        if max_height <= 0 or self.height() <= max_height:
+            return
+        padding = self.appearance.padding
+        font = self.document.defaultFont()
+        # Only a modest reduction, so neighbouring lines keep a matching size.
+        minimum = max(10, round(font.pixelSize() * .8))
+        option = self.document.defaultTextOption()
+        option.setWrapMode(QTextOption.WrapAtWordBoundaryOrAnywhere)
+        self.document.setDefaultTextOption(option)
+        widest = max(self.width(), max_width)
+        for width in (self.width(), (self.width() + widest) // 2, widest):
+            self.document.setTextWidth(width - padding * 2)
+            if self.document.size().height() + padding * 2 <= max_height:
+                break
+        while (self.document.size().height() + padding * 2 > max_height and font.pixelSize() > minimum):
+            font.setPixelSize(font.pixelSize() - 1)
+            self.document.setDefaultFont(font)
+        needed = round(self.document.size().height()) + padding * 2
+        # Still cover the English box itself, but no more than the room allows.
+        box = getattr(self, 'source_box_height', 0)
+        self.setFixedSize(width, max(needed, min(box, max_height)))
+        self.update()
 
     def paintEvent(self, event):
         from PySide6.QtGui import QAbstractTextDocumentLayout, QPalette
@@ -189,15 +314,20 @@ class TranslationOverlay(ArabicSurface):
             round(self.document.size().height()) + self.appearance.padding * 2))
         self.update()
 
-    def reveal(self):
-        self.setWindowOpacity(0)
+    def reveal(self, fade=True, lifetime=None):
+        """Show the overlay. `lifetime` (seconds) is only for notices and the
+        optional timed Quick Translate mode; translations otherwise stay until
+        their source text changes or disappears."""
+        self.setWindowOpacity(0 if fade else self.appearance.opacity / 100)
         self.show()
-        self.animation.setDuration(self.appearance.fade_ms)
-        self.animation.setStartValue(0.0)
+        self.animation.setDuration(self.appearance.fade_ms if fade else 0)
+        self.animation.setStartValue(0.0 if fade else self.appearance.opacity / 100)
         self.animation.setEndValue(self.appearance.opacity / 100)
         self.animation.start()
         if self.notice:
             self.timer.start(max(1000, self.appearance.duration * 1000))
+        elif lifetime:
+            self.timer.start(max(1000, round(lifetime * 1000)))
 
     def dismiss(self):
         if self.closing:
@@ -212,24 +342,108 @@ class TranslationOverlay(ArabicSurface):
         self.animation.start()
 
 
+def row_limit(source, others):
+    """Left edge of the nearest item to the right on the same text row."""
+    edges = []
+    for other in others:
+        vertical = min(source.bottom, other.bottom) - max(source.y, other.y)
+        if vertical > min(source.h, other.h) * .5 and other.x >= source.right - 4:
+            edges.append(other.x)
+    return min(edges) if edges else None
+
+
+def column_limit_below(source, others):
+    """Top edge of the nearest item below `source` that shares its columns."""
+    edges = []
+    for other in others:
+        horizontal = min(source.right, other.right) - max(source.x, other.x)
+        if horizontal > min(source.w, other.w) * .2 and other.y >= source.bottom - 2:
+            edges.append(other.y)
+    return min(edges) if edges else None
+
+
+def reading_seconds(arabic):
+    """Automatic Quick Translate display time: a comfortable reading pace
+    (about 150 words a minute) plus a little time to find the overlay."""
+    words = len(arabic.split())
+    return max(4.0, min(60.0, 2.5 + words * .4))
+
+
 class OverlayManager:
     def __init__(self, settings, report, on_remove=None):
         self.settings, self.report = settings, report
         self.on_remove = on_remove
         self.source_rects = {}
+        self.sources = {}
         self.windows = {}
         self.retired = []
         self.controls = {}
         self.dismissed = set()
+        # None until the first overlay shows whether Windows honours capture
+        # exclusion. When it does not, our overlays are visible to our own
+        # screen capture: the engine masks these rectangles and Replace
+        # placement falls back to Below so the English stays readable.
+        self.capture_visible = None
+        self._visible_rects = ()
         self.interaction_timer = QTimer()
         self.interaction_timer.setInterval(50)
         self.interaction_timer.timeout.connect(self.update_interaction)
 
+    def capture_visible_rects(self):
+        """Thread-safe snapshot (physical pixels) for the processing thread."""
+        return self._visible_rects if self.capture_visible else ()
+
+    def _refresh_visible_rects(self):
+        if not self.capture_visible:
+            return
+        rects = []
+        for overlay in list(self.windows.values()) + list(self.controls.values()):
+            if not overlay.isVisible():
+                continue
+            screen = overlay.screen() or QApplication.primaryScreen()
+            try:
+                rects.append(logical_to_physical(screen, Rect(overlay.x(), overlay.y(), overlay.width(), overlay.height())))
+            except KeyError:
+                continue
+        self._visible_rects = tuple(rects)
+
+    def _duplicate_of(self, result):
+        """A Quick result already shown by Watch (or vice versa)."""
+        from .text import normalize
+        key = normalize(result.source)
+        if not key:
+            return None
+        for other, source in self.sources.items():
+            if other == result.id or other.split(':')[0] == result.id.split(':')[0]:
+                continue
+            overlay = self.windows.get(other)
+            rect = self.source_rects.get(other)
+            if (overlay and not overlay.closing and rect and source == key
+                    and rect.overlap(result.rect) > .6):
+                return other
+        return None
+
     def show(self, result):
         if result.id in self.dismissed:
             return
-        self.remove(result.id, notify=False)
+        if not result.notice and self._duplicate_of(result):
+            return
+        previous = self.windows.get(result.id)
+        replacing = previous is not None and not previous.closing and previous.isVisible()
+        if replacing:
+            # In-place update (a line grew or was corrected): swap without a
+            # fade so the subtitle never blinks while text is being typed.
+            self.windows.pop(result.id, None)
+            control = self.controls.pop(result.id, None)
+            if control:
+                control.hide(); control.deleteLater()
+            previous.timer.stop(); previous.animation.stop()
+            previous.hide(); previous.deleteLater()
+        else:
+            self.remove(result.id, notify=False)
+        from .text import normalize
         self.source_rects[result.id] = result.rect
+        self.sources[result.id] = normalize(result.source)
         screen, source = physical_to_logical(result.rect)
         available = screen.availableGeometry()
         bounds = Rect(available.x(), available.y(), available.width(), available.height())
@@ -238,36 +452,96 @@ class OverlayManager:
         a = effective_appearance(self.settings.overlay, result.application, result.style_hint)
         if result.notice:
             a = replace(a, position='Below', duration=4, persistence=False, max_width=420, font_size=20)
+        if self.capture_visible and a.position == 'Replace':
+            a = replace(a, position='Below')
         a = replace(a, max_width=min(a.max_width, bounds.w - 20))
         overlay = TranslationOverlay(a, result.arabic)
         overlay.notice = result.notice
+        if self.capture_visible is None or (self.capture_visible is False and not overlay.capture_excluded):
+            self.capture_visible = not overlay.capture_excluded
+            if self.capture_visible:
+                # Exclusion only keeps overlays out of screen capture. Some
+                # Windows builds refuse it; still show translations, mask them
+                # from our own OCR, and never cover the source text.
+                self.report("Capture exclusion is unavailable; overlays are placed beside text.")
+                if a.position == 'Replace':
+                    overlay.close(); overlay.deleteLater()
+                    a = replace(a, position='Below')
+                    overlay = TranslationOverlay(a, result.arabic)
+                    overlay.notice = result.notice
+        avoid = [physical_to_logical(r)[1] for r in result.avoid_regions]
         if a.position == 'Replace':
-            overlay.fit_to_source(source, max_extra=0 if result.container else 80)
-        if not overlay.capture_excluded:
-            # Exclusion only keeps the overlay out of screenshots/recordings. Some
-            # Windows builds/drivers refuse it; hiding the translation entirely
-            # was the worst outcome, so still show it and say why.
-            self.report("Capture exclusion is unavailable; overlay may appear in screen capture.")
+            # Grow only into free space: never over a neighbouring value
+            # ("Health 85 / 100") or other text on the same row.
+            right_limit = row_limit(source, avoid)
+            if result.container:
+                # Inside a panel/cell: grow up to its inner edge, never past it.
+                edge = physical_to_logical(result.container)[1].right - 4
+                right_limit = edge if right_limit is None else min(right_limit, edge)
+            if right_limit is not None:
+                # Always at least cover the English itself.
+                right_limit = max(right_limit, source.right + 4)
+            room = right_limit - source.right if right_limit is not None else 160
+            line = round(result.line_height / max(.5, screen.devicePixelRatio())) if result.line_height else 0
+            overlay.fit_to_source(source, max_extra=max(0, min(160 if line else 80, room - 8)), line_height=line)
+            if right_limit is not None:
+                overlay.limit_right(right_limit - (source.x - overlay.fit_margin) - 1)
+            # Never grow down over the next line of text or another overlay
+            # (wrapped chat messages, stacked dialogue): use spare width first,
+            # then smaller type, before taking more height.
+            others = avoid + [Rect(w.x(), w.y(), w.width(), w.height()) for key, w in self.windows.items()
+                              if key != result.id and w.isVisible() and not w.closing]
+            bottom = column_limit_below(source, others)
+            if bottom is not None and not getattr(overlay, 'single_line', False):
+                top = source.y - overlay.fit_margin
+                left = source.x - overlay.fit_margin
+                width_limit = right_limit - left - 1 if right_limit is not None else overlay.width() + 80
+                width_limit = min(width_limit, bounds.right - 10 - left)
+                overlay.limit_height(bottom - top - 1, max(overlay.width(), width_limit))
         occupied = [Rect(w.x(), w.y(), w.width(), w.height()) for w in self.windows.values() if w.isVisible() and not w.closing]
-        occupied += [physical_to_logical(r)[1] for r in result.avoid_regions]
+        occupied += avoid
         if a.position == 'Replace':
             rect = Rect(max(bounds.x, min(source.x - overlay.fit_margin, bounds.right - overlay.width())),
                 max(bounds.y, min(source.y - overlay.fit_margin, bounds.bottom - overlay.height())), overlay.width(), overlay.height())
+        elif replacing and a.position == previous.appearance.position:
+            # Keep a growing line's subtitle where the reader already looks.
+            rect = Rect(previous.x(), previous.y(), overlay.width(), overlay.height())
+            if rect.right > bounds.right - 10:
+                rect = Rect(max(bounds.x + 10, bounds.right - 10 - rect.w), rect.y, rect.w, rect.h)
         else:
             rect = place_overlay(source, overlay.width(), overlay.height(), bounds, occupied, a.position)
         overlay.move(rect.x, rect.y)
         if len(self.windows) >= self.settings.max_regions:
             self.remove(next(iter(self.windows)))
         self.windows[result.id] = overlay
-        overlay.reveal()
+        lifetime = None
+        if (result.id.startswith('manual') and not result.notice
+                and getattr(self.settings.overlay, 'quick_lifetime', 'source') == 'timer'):
+            seconds = getattr(self.settings.overlay, 'quick_seconds', 0)
+            lifetime = seconds if seconds > 0 else reading_seconds(result.arabic)
+        overlay.reveal(fade=not replacing, lifetime=lifetime)
         self.interaction_timer.start()
         overlay.animation.finished.connect(lambda: self._collect(result.id, overlay))
+        overlay.timer.timeout.connect(lambda key=result.id: self._expired(key, overlay))
+        self._refresh_visible_rects()
+
+    def _expired(self, key, overlay):
+        """A timed overlay ended; forget its bookkeeping like a removal."""
+        if self.windows.get(key) is overlay:
+            self.windows.pop(key, None)
+            self.source_rects.pop(key, None)
+            self.sources.pop(key, None)
+            if self.on_remove:
+                self.on_remove(key)
+            self.retired.append(overlay)
+        self._refresh_visible_rects()
 
     def _collect(self, key, overlay):
         if overlay.closing:
             if self.windows.get(key) is overlay:
                 self.windows.pop(key, None)
                 self.source_rects.pop(key, None)
+                self.sources.pop(key, None)
                 if self.on_remove:
                     self.on_remove(key)
             if overlay in self.retired:
@@ -298,6 +572,8 @@ class OverlayManager:
             elif control:
                 control.dragging = False
                 control.hide()
+        if self.capture_visible:
+            self._refresh_visible_rects()
         if not self.windows:
             self.interaction_timer.stop()
 
@@ -317,6 +593,7 @@ class OverlayManager:
 
     def remove(self, key, immediate=False, notify=True):
         self.source_rects.pop(key, None)
+        self.sources.pop(key, None)
         if notify and self.on_remove:
             self.on_remove(key)
         control = self.controls.pop(key, None)
@@ -333,6 +610,7 @@ class OverlayManager:
             else:
                 self.retired.append(overlay)
                 overlay.dismiss()
+        self._refresh_visible_rects()
 
     def clear(self, immediate=False):
         self.dismissed.clear()
@@ -356,6 +634,7 @@ class OverlayManager:
             self.source_rects[key] = rect
             if key in self.controls:
                 self.controls[key].follow_overlay()
+            self._refresh_visible_rects()
 
 
 class OverlayInteraction(QWidget):

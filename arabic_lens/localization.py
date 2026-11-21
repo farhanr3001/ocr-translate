@@ -122,6 +122,12 @@ AR.update({
     'Manual translation time (seconds)': 'مدة عرض الترجمة اليدوية (ثوانٍ)',
     'Keep Watch translations while text remains visible': 'إبقاء ترجمة المراقبة ما دام النص ظاهرًا',
     'Translations stay visible until their English text changes or leaves the screen.': 'تبقى الترجمة ظاهرة حتى يتغير النص الإنجليزي أو يختفي من الشاشة.',
+    'Quick Translate overlay': 'ترجمة سريعة: مدة الظهور',
+    'Until the text changes': 'حتى يتغير النص',
+    'For a set time': 'لمدة محددة',
+    'Seconds (0 = automatic)': 'الثواني (0 = تلقائي)',
+    'Automatic time allows a comfortable reading pace for the length of the translation.': 'المدة التلقائية تمنح وقتًا مريحًا لقراءة الترجمة حسب طولها.',
+    'Capture exclusion is unavailable; overlays are placed beside text.': 'استبعاد الالتقاط غير متاح؛ توضع الترجمات بجانب النص.',
 })
 
 AR.update({

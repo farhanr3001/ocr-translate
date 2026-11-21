@@ -105,7 +105,14 @@ Quick Capture binds to the application under your selection, including when a re
 toolbar or another window previously had focus. Failed selections display a short notice
 and, while Settings is hidden, a Windows notification. Overlay windows are excluded from
 screen capture to prevent self-recognition, so remote-desktop software may not show
-translations that are visible on the laptop's physical screen.
+translations that are visible on the laptop's physical screen. If Windows refuses that
+exclusion, translations still appear: the app ignores its own overlays when reading the
+screen and places them beside (not over) the English.
+
+**Overlay → Quick Translate overlay** chooses how long a Quick Translate result stays:
+**Until the text changes** (default; each line leaves when its English changes or
+disappears) or **For a set time**. With 0 seconds the time is automatic, based on the
+translation's length.
 
 ## Watch Mode
 
@@ -128,6 +135,14 @@ Each selected area has its own preview and text tracker. Watch checks small prev
 every 250 ms and lets changed text settle before OCR. Scrolling in one area does not
 recapture or recognize an unchanged area. Translations remain visible until their
 source text changes, scrolls out, or the source app closes.
+
+Text being typed or edited keeps one subtitle per line that is corrected in place once
+the words settle (about half a second after a pause); partial words are not translated
+on every keystroke. Lines typed separately stay separate, wrapped sentences stay whole,
+and scrolling text such as chat keeps its translations attached. Chat and dialogue
+speaker names ("Aya: …", "23:33 MrMoonie: …", "Jimmy Jon: …") are kept as written in
+front of the translated message, and chat acronyms, emotes and nicknames (lol, lmao,
+smh, KEKW, jp) stay unchanged.
 
 The focused window (or its monitor, if configured) is sampled at a modest interval. A
 320×180 preview is checked first. Unchanged previews skip full-size capture, text
@@ -154,7 +169,8 @@ Paragraph gaps and individual list rows retain their source positions. Numbers
 within paragraphs are included in the Arabic message using exact Western digits,
 currency signs, grouping separators and decimal points. Simple label/value UI cells
 can translate just the label, leaving a separate displayed game value untouched.
-Other placement choices anchor near source text and avoid other overlay rectangles.
+A covering overlay only grows into free space, so it never hides a value or word beside
+its label. Other placement choices anchor near source text and avoid other overlay rectangles.
 Manual captures have no expiry timer: source tracking follows scrolling and removes
 the translation when the English disappears. Four appearance presets and a live RTL
 preview are included. Developer diagnostics are opt-in. An independent 75 ms

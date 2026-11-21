@@ -43,17 +43,22 @@ def test_second_scale_can_complete_partial_line_without_duplicate():
 
 
 def test_fullscreen_overlap_prefers_complete_paragraph_without_touching_other_zone():
-    from arabic_lens.engine import reconcile_zone_blocks
+    from arabic_lens.engine import Engine, reconcile_zone_blocks
     from arabic_lens.anchors import VisualAnchors
+    from arabic_lens.scene import TextScene
     events=[]
-    state={'bounds':Rect(500,0,900,900),'blocks':{},'tracker':SimpleNamespace(regions={})}
-    other={'bounds':Rect(0,0,1024,900),'namespace':'0-',
-           'blocks':{'1':TextBlock('runners',Rect(661,761,52,8)),'2':TextBlock('Home',Rect(388,200,50,20))},
-           'tracker':SimpleNamespace(regions={'1':object(),'2':object()})}
+    state={'bounds':Rect(500,0,900,900),'scene':TextScene('watch-1-')}
+    scene=TextScene('watch-0-')
+    scene.reconcile([TextBlock('runners',Rect(661,761,52,8)),TextBlock('Home',Rect(388,200,50,20))],
+                    [Rect(0,0,1024,900)],None,0)
+    other={'bounds':Rect(0,0,1024,900),'namespace':'0-','scene':scene}
     fake=SimpleNamespace(zone_states={0:other,1:state},jobs={},anchors=VisualAnchors(),removed=SimpleNamespace(emit=events.append))
+    fake._retire_segment=lambda st, sid, **kw: Engine._retire_segment(fake, st, sid, **kw)
     full=TextBlock('The driver does not concern themselves with speed runners',Rect(160,738,480,32))
     assert reconcile_zone_blocks(fake,state,state['bounds'],[full])==[full]
-    assert events==['watch-0-1'] and list(other['blocks'])==['2']
+    # The tile's fragment yields to the complete paragraph; the other zone's
+    # unrelated text is untouched.
+    assert events==['watch-0-1'] and list(scene.segments)==['watch-0-2']
 
 
 def test_short_lowercase_continuation_remains_in_its_paragraph():
@@ -158,7 +163,7 @@ def test_cpu_batch_excludes_cancelled_requests_and_keeps_live_ones():
     async def scenario():
         p=OfflineTranslationProvider();seen=[]
         def batch(entries):
-            seen.extend(t for t,_,_ in entries)
+            seen.extend(entry[0] for entry in entries)  # (text, future, cancelled, keep)
             return ['ترجمة' for _ in entries]
         p._batch=batch
         first=asyncio.create_task(p.translate('Old source'))
