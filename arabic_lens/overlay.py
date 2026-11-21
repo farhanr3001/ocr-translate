@@ -449,7 +449,7 @@ class OverlayManager:
         bounds = Rect(available.x(), available.y(), available.width(), available.height())
         from dataclasses import replace
         from .appearance import effective_appearance
-        a = effective_appearance(self.settings.overlay, result.application, result.style_hint)
+        a = effective_appearance(self.settings.overlay, result.style_hint)
         if result.notice:
             a = replace(a, position='Below', duration=4, persistence=False, max_width=420, font_size=20)
         if self.capture_visible and a.position == 'Replace':

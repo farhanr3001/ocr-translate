@@ -4,7 +4,7 @@ from arabic_lens.storage import TranslationStore
 from arabic_lens.text import TextFilterService, watch_context
 from arabic_lens.models import TextBlock, Rect
 
-PACK = Path(__file__).resolve().parents[1] / 'arabic_lens/data/dressmaker.json'
+PACK = Path(__file__).resolve().parents[1] / 'tests/fixtures/screen_phrase_pack.json'
 
 
 def test_seed_restart_clear_and_existing_translation(tmp_path):

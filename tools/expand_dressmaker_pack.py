@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 from arabic_lens.text import normalize
 
-path = Path('arabic_lens/data/dressmaker.json')
+path = Path('tests/fixtures/screen_phrase_pack.json')
 pack = json.loads(path.read_text(encoding='utf-8'))
 # No generated completion of clipped item names, fuzzy aliases or invented prices.
 rows = '''Prudence|برودنس|steam-00.jpg

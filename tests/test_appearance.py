@@ -3,13 +3,13 @@ from arabic_lens.config import OverlaySettings
 from arabic_lens.appearance import effective_appearance, sample_style
 
 
-def test_game_matching_is_optional_and_does_not_mutate_settings():
+def test_source_matching_is_optional_and_does_not_mutate_settings():
     base = OverlaySettings(font='Segoe UI', text_color='#fefefe')
-    assert effective_appearance(base, 'Dressmaker') == base
+    assert effective_appearance(base) == base
     base.match_game = True
-    appearance = effective_appearance(base, 'Dressmaker - Steam')
-    assert appearance.font == 'Traditional Arabic'
-    assert appearance.background_color == '#f7eee2'
+    appearance = effective_appearance(base)
+    assert appearance.font == 'Segoe UI'
+    assert appearance.background_color == '#131415'
     assert base.font == 'Segoe UI' and base.text_color == '#fefefe'
     assert appearance.duration == base.duration and appearance.position == base.position
 
@@ -18,8 +18,8 @@ def test_generic_appearance_uses_bounded_capture_sample():
     light = sample_style(np.full((900, 1600, 3), 245, np.uint8))
     dark = sample_style(np.full((900, 1600, 4), 15, np.uint8))
     base = OverlaySettings(match_game=True)
-    assert effective_appearance(base, 'Roblox', light).text_color == '#272c30'
-    assert effective_appearance(base, 'Roblox', dark).text_color == '#ffffff'
+    assert effective_appearance(base, light).text_color == '#272c30'
+    assert effective_appearance(base, dark).text_color == '#ffffff'
 
 
 def test_long_overlay_avoids_requirements_and_nearby_text():

@@ -12,6 +12,6 @@ parser.add_argument('--reload', action='store_true', help='Explicitly reload a c
 args = parser.parse_args()
 service = SettingsService(args.data_dir)
 store = TranslationStore(service.directory / 'translations.db', service.settings)
-count = store.seed_pack(Path(__file__).resolve().parents[1] / 'arabic_lens/data/dressmaker.json', args.reload)
+count = store.seed_pack(Path(__file__).resolve().parents[1] / 'tests/fixtures/screen_phrase_pack.json', args.reload)
 store.close()
 print(f'Added {count} reviewed cache keys to {service.directory / "translations.db"}')

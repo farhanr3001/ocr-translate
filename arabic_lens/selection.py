@@ -10,6 +10,7 @@ class SelectionWindow(QWidget):
     selected = Signal(object)
     cancelled = Signal()
     finished = Signal()
+    area_removed = Signal(int)
 
     def __init__(self, screen, localization):
         super().__init__()
@@ -27,11 +28,17 @@ class SelectionWindow(QWidget):
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
-            if self.multi and self.done_rect().contains(event.position().toPoint()):
+            point = event.position().toPoint()
+            if self.multi and self.done_rect().contains(point):
                 self.finished.emit(); return
-            if self.multi and self.cancel_rect().contains(event.position().toPoint()):
+            if self.multi and self.cancel_rect().contains(point):
                 self.cancelled.emit(); return
-            self.anchor = self.current = event.position().toPoint()
+            index = self.area_at_remove_button(point) if self.multi else None
+            if index is not None:
+                self.area_removed.emit(index)
+                self.update_cursor(point)
+                return
+            self.anchor = self.current = point
             self.grabMouse()
             self.update()
         elif event.button() == Qt.RightButton:
@@ -45,7 +52,8 @@ class SelectionWindow(QWidget):
             self.update_cursor(event.position().toPoint())
 
     def update_cursor(self, point):
-        over_controls = self.done_rect().contains(point) or self.cancel_rect().contains(point)
+        over_controls = (self.done_rect().contains(point) or self.cancel_rect().contains(point)
+                         or self.area_at_remove_button(point) is not None)
         self.setCursor(Qt.PointingHandCursor if over_controls else Qt.CrossCursor)
 
     def showEvent(self, event):
@@ -58,12 +66,13 @@ class SelectionWindow(QWidget):
             return
         self.releaseMouse()
         selection = QRect(self.anchor, event.position().toPoint()).normalized().intersected(self.rect())
+        self.anchor = self.current = None
+        self.update()
         if selection.width() < 8 or selection.height() < 8:
             if not self.multi:
                 self.cancelled.emit()
             return
         global_pos = self.mapToGlobal(selection.topLeft())
-        self.anchor = self.current = None
         self.selected.emit(logical_to_physical(self.screen, Rect(global_pos.x(), global_pos.y(), selection.width(), selection.height())))
 
     def keyPressEvent(self, event):
@@ -78,15 +87,33 @@ class SelectionWindow(QWidget):
     def cancel_rect(self):
         return QRect(self.width() // 2 + 4, 17, 36, 36)
 
+    def local_areas(self):
+        for index, area in enumerate(self.areas):
+            screen, logical = physical_to_logical(area)
+            if screen is self.screen:
+                yield index, QRect(logical.x - self.x(), logical.y - self.y(), logical.w, logical.h)
+
+    def remove_rect(self, box):
+        size = 24
+        x = max(0, min(box.right() - size + 1, self.width() - size))
+        y = max(0, min(box.top(), self.height() - size))
+        button = QRect(x, y, size, size)
+        if button.intersects(self.done_rect()) or button.intersects(self.cancel_rect()):
+            button.moveTop(self.done_rect().bottom() + 5)
+        return button
+
+    def area_at_remove_button(self, point):
+        for index, box in reversed(list(self.local_areas())):
+            if self.remove_rect(box).contains(point):
+                return index
+        return None
+
     def paintEvent(self, event):
         p = QPainter(self)
         p.fillRect(self.rect(), QColor(6, 12, 19, 92))
         if self.multi:
-            for index, area in enumerate(self.areas, 1):
-                screen, logical = physical_to_logical(area)
-                if screen is not self.screen:
-                    continue
-                box = QRect(logical.x - self.x(), logical.y - self.y(), logical.w, logical.h)
+            areas = list(self.local_areas())
+            for index, box in areas:
                 p.setCompositionMode(QPainter.CompositionMode_Clear)
                 p.fillRect(box, Qt.transparent)
                 p.setCompositionMode(QPainter.CompositionMode_SourceOver)
@@ -95,7 +122,7 @@ class SelectionWindow(QWidget):
                 p.setBrush(QColor('#246447'))
                 p.drawRoundedRect(QRect(box.x(), box.y(), 28, 25), 5, 5)
                 p.setPen(QColor('white'))
-                p.drawText(QRect(box.x(), box.y(), 28, 25), Qt.AlignCenter, str(index))
+                p.drawText(QRect(box.x(), box.y(), 28, 25), Qt.AlignCenter, str(index + 1))
                 p.setBrush(Qt.NoBrush)
         if self.anchor is not None:
             r = QRect(self.anchor, self.current).normalized()
@@ -107,6 +134,14 @@ class SelectionWindow(QWidget):
         p.setPen(QColor("#eef8f5"))
         p.setFont(QFont("Segoe UI", 12))
         if self.multi:
+            p.setRenderHint(QPainter.Antialiasing)
+            for _, area in areas:
+                rect = self.remove_rect(area)
+                p.setBrush(QColor('#814945'))
+                p.setPen(QPen(QColor('#f2e2df'), 1))
+                p.drawEllipse(rect.adjusted(1, 1, -1, -1))
+                p.setPen(QColor('white'))
+                p.drawText(rect, Qt.AlignCenter, '×')
             p.setPen(QPen(QColor('#91a99a'), 1))
             p.setBrush(QColor(232, 243, 231, 235))
             p.drawRoundedRect(QRect(self.width() // 2 - 48, 9, 96, 52), 15, 15)
@@ -141,6 +176,7 @@ class SelectionManager:
             window.selected.connect(self.add_area if window.multi else self.finish)
             window.cancelled.connect(self.cancel)
             window.finished.connect(self.finish_multi)
+            window.area_removed.connect(self.remove_area)
             self.windows.append(window)
             window.show()
         if self.windows:
@@ -181,6 +217,12 @@ class SelectionManager:
         self.areas.append(area)
         for window in self.windows:
             window.update()
+
+    def remove_area(self, index):
+        if 0 <= index < len(self.areas):
+            del self.areas[index]
+            for window in self.windows:
+                window.update()
 
     def finish_multi(self):
         if not self.areas:

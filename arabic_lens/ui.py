@@ -1,14 +1,39 @@
 import copy
 from datetime import datetime
-from PySide6.QtCore import Qt, Signal, QTimer
+from PySide6.QtCore import Qt, Signal, QTimer, QSize
 from PySide6.QtGui import QFont, QPainter, QColor, QIcon, QPixmap, QKeySequence, QFontDatabase
 from PySide6.QtWidgets import (QWidget, QMainWindow, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QFrame, QScrollArea, QStackedWidget, QComboBox, QCheckBox, QButtonGroup, QSpinBox, QLineEdit, QListWidget,
-    QFormLayout, QKeySequenceEdit, QInputDialog, QMessageBox, QColorDialog, QSizePolicy, QSizeGrip, QListWidgetItem, QTextEdit, QTreeWidget, QTreeWidgetItem)
-from .config import DEFAULT_IGNORE, PRESETS, OverlaySettings
+    QFormLayout, QKeySequenceEdit, QInputDialog, QMessageBox, QColorDialog, QSizePolicy, QListWidgetItem, QTextEdit, QTreeWidget, QTreeWidgetItem)
+from .config import DEFAULT_IGNORE, OverlaySettings
 from .overlay import ArabicSurface
 
 from .design import STYLE, SliderSpin, line_icon, PreviewScene, ToggleCheckBox
+from .overlay_preview import OverlayPreview
+
+
+def watch_choices(parent, translate, startup, changed):
+    row = QHBoxLayout()
+    row.setSpacing(8)
+    group = QButtonGroup(parent)
+    group.setExclusive(True)
+    for key, title in (("fullscreen", "Watch fullscreen"), ("new", "Create New"),
+                       ("previous", "Use Previous"), ("presets", "Show Presets")):
+        choice = QCheckBox(translate(title))
+        choice.setObjectName("startupChoice")
+        choice.setProperty("mode", key)
+        choice.setChecked(startup == key)
+        choice.clicked.connect(lambda checked, mode=key: changed(mode) if checked else None)
+        group.addButton(choice)
+        row.addWidget(choice)
+    return row, group
+
+
+def select_watch_choice(group, mode):
+    for choice in group.buttons():
+        if choice.property("mode") == mode:
+            choice.setChecked(True)
+            return
 
 
 def lens_icon(size=64, active=False):
@@ -33,6 +58,8 @@ class SettingsWindow(QMainWindow):
     apply_requested = Signal(dict)
     action_requested = Signal(str)
     watch_startup_changed = Signal(str)
+    toolbox_requested = Signal()
+    overlay_changed = Signal(dict)
     ignore_translation_requested = Signal(str)
     update_requested = Signal()
 
@@ -108,7 +135,6 @@ class SettingsWindow(QMainWindow):
             button = QPushButton(self.t(title))
             button.setObjectName("nav")
             button.setIcon(line_icon(title))
-            from PySide6.QtCore import QSize
             button.setIconSize(QSize(20, 20))
             button.setCheckable(True)
             button.clicked.connect(lambda checked=False, i=index: self.navigate(i))
@@ -122,7 +148,7 @@ class SettingsWindow(QMainWindow):
         self.sidebar_language.setCurrentIndex(1 if self.settings.language == "ar" else 0)
         side.addWidget(self.sidebar_language)
         side.addSpacing(10)
-        side.addWidget(self.label("Local recognition · No game injection · Quiet by design", "muted"))
+        side.addWidget(self.label("English to Arabic · On-device recognition", "muted"))
         row.addWidget(sidebar)
         content = QVBoxLayout()
         content.setContentsMargins(28, 26, 28, 18)
@@ -142,18 +168,8 @@ class SettingsWindow(QMainWindow):
         watch_controls.setSpacing(5)
         self.watch_button = self.button("Enable Watch", lambda: self.action_requested.emit("watch"), True)
         watch_controls.addWidget(self.watch_button)
-        choices = QHBoxLayout()
-        choices.setSpacing(8)
-        self.watch_choices = QButtonGroup(self)
-        self.watch_choices.setExclusive(True)
-        for key, title in (("fullscreen", "Watch fullscreen"), ("new", "Create New"),
-                ("previous", "Use Previous"), ("presets", "Show Presets")):
-            choice = QCheckBox(self.t(title))
-            choice.setObjectName("startupChoice")
-            choice.setChecked(self.settings.watch_startup == key)
-            choice.toggled.connect(lambda enabled, value=key: self.watch_startup_changed.emit(value) if enabled else None)
-            self.watch_choices.addButton(choice)
-            choices.addWidget(choice)
+        choices, self.watch_choices = watch_choices(root, self.t, self.settings.watch_startup,
+                                                   self.watch_startup_changed.emit)
         watch_controls.addLayout(choices)
         top.addLayout(watch_controls)
         content.addLayout(top)
@@ -162,14 +178,14 @@ class SettingsWindow(QMainWindow):
         for builder in (self.home, self.general, self.translation, self.watch_page, self.overlay_page, self.shortcuts, self.ignore_page, self.history_page):
             widget = QWidget()
             layout = QVBoxLayout(widget)
-            layout.setContentsMargins(0, 0, 10, 0)
+            is_overlay = builder == self.overlay_page
+            layout.setContentsMargins(0, 0, 0 if is_overlay else 10, 0)
             layout.setSpacing(18)
             builder(layout)
-            layout.addStretch()
-            scroll = QScrollArea()
-            scroll.setWidgetResizable(True)
-            scroll.setWidget(widget)
-            self.stack.addWidget(scroll)
+            if not is_overlay:
+                layout.addStretch()
+                widget = self.scroll_page(widget)
+            self.stack.addWidget(widget)
         footer = QFrame()
         footer.setObjectName("footer")
         bottom = QHBoxLayout(footer)
@@ -187,11 +203,12 @@ class SettingsWindow(QMainWindow):
         shell_layout.setSpacing(0)
         from .titlebar import TitleBar
         self.titlebar = TitleBar(self, self.t)
+        toolbox = self.titlebar.control('', self.t('Return to toolbox'), self.toolbox_requested.emit)
+        toolbox.setIcon(line_icon("toolbox"))
+        self.titlebar.add_control(toolbox)
         shell_layout.addWidget(self.titlebar)
         shell_layout.addWidget(root, 1)
-        self.resize_grip = QSizeGrip(shell)
         self.setCentralWidget(shell)
-        self.resize_grip.move(shell.width() - 20, shell.height() - 20)
         if old:
             old.deleteLater()
         self.navigate(page)
@@ -199,6 +216,17 @@ class SettingsWindow(QMainWindow):
         self.sidebar_language.currentIndexChanged.connect(lambda index: self.fields["language"].setCurrentIndex(index))
         from .ui_controls import protect_wheel_fields
         protect_wheel_fields(self)
+
+    @staticmethod
+    def scroll_page(widget):
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll.setWidget(widget)
+        return scroll
+
+    def select_watch_startup(self, mode):
+        select_watch_choice(self.watch_choices, mode)
 
     def navigate(self, index):
         self.stack.setCurrentIndex(index)
@@ -300,7 +328,7 @@ class SettingsWindow(QMainWindow):
         self.section_header(top, "English on screen. Arabic in the moment.", "A quiet subtitle beside the words you want to understand.", "Translation")
         scene, surface = self.make_scene(copy.deepcopy(self.settings.overlay))
         top.addWidget(scene)
-        top.addWidget(self.label("Appearance example · Your game stays in control", "muted"))
+        top.addWidget(self.label("Appearance example · Your apps stay in control", "muted"))
         modes = self.card(layout)
         self.section_header(modes, "How would you like to translate?", "Start with Watch Mode, or select just the text you need.", "capture")
         for title, description, action, icon in (("Watch Mode", "Follow text automatically as your screen changes.", "watch", "eye"), ("Quick Translate", "Select text anywhere. Arabic appears on release.", "quick", "capture"), ("Translate Again", "Recapture your last selection in one keystroke.", "repeat", "repeat")):
@@ -332,7 +360,7 @@ class SettingsWindow(QMainWindow):
         setup_row.setContentsMargins(20, 17, 20, 17)
         texts = QVBoxLayout()
         texts.addWidget(self.label("You are ready to translate" if ready else "One small setup before you start", "sectionTitle"))
-        texts.addWidget(self.label("Open your game and press Alt+W. Translation works offline." if self.settings.provider == 'Built-in offline' else "Borderless or windowed games work best. Settings can stay closed.", "muted"))
+        texts.addWidget(self.label("Open any app and press Alt+W. Translation works offline." if self.settings.provider == 'Built-in offline' else "Open the text you want to translate. Settings can stay closed.", "muted"))
         setup_row.addLayout(texts, 1)
         setup_row.addWidget(self.button("Translation settings", lambda: self.navigate(2)))
         layout.addWidget(setup)
@@ -464,12 +492,6 @@ class SettingsWindow(QMainWindow):
             return
         self.apply(test=True)
 
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        if hasattr(self, 'resize_grip'):
-            self.resize_grip.move(self.centralWidget().width() - 20, self.centralWidget().height() - 20)
-            self.resize_grip.setVisible(not self.isMaximized())
-
     def watch_page(self, layout):
         self.heading(layout, "Watch Mode", "Useful words. Less noise.")
         card = self.card(layout)
@@ -520,39 +542,40 @@ class SettingsWindow(QMainWindow):
             widget.setChecked(value) if isinstance(widget, QCheckBox) else widget.setValue(value)
 
     def overlay_page(self, layout):
-        preview_card = self.card(layout)
-        self.section_header(preview_card, "Live preview", "See your subtitle against a game scene as you adjust it.", "eye")
+        columns = QHBoxLayout()
+        columns.setSpacing(18)
+        layout.addLayout(columns)
+        controls = QWidget()
+        controls_layout = QVBoxLayout(controls)
+        controls_layout.setContentsMargins(0, 0, 12, 0)
+        controls_layout.setSpacing(14)
+        self.overlay_scroll = self.scroll_page(controls)
+        columns.addWidget(self.overlay_scroll, 3)
+
+        preview_column = QVBoxLayout()
+        columns.addLayout(preview_column, 2)
+        preview_card = self.card(preview_column)
+        preview_card.parentWidget().setMinimumWidth(290)
+        self.section_header(preview_card, "Live preview", "Appearance updates as you adjust the controls.", "eye")
         self.preview_appearance = copy.deepcopy(self.settings.overlay)
-        self.preview_scene, self.preview = self.make_scene(self.preview_appearance)
-        self.preview_scene.setMinimumHeight(140)
-        self.preview_scene.setMaximumHeight(140)
+        self.preview_scene = OverlayPreview(self.preview_appearance)
+        self.preview = self.preview_scene.surface
         preview_card.addWidget(self.preview_scene)
+        self.preview_fit_hint = self.label("Replace fits the original text and uses a solid background.", "muted")
+        self.preview_match_hint = self.label("This example uses a dark background. Matching adapts to the region on screen.", "muted")
+        preview_card.addWidget(self.preview_fit_hint)
+        preview_card.addWidget(self.preview_match_hint)
+        preview_actions = QHBoxLayout()
+        preview_actions.addWidget(self.button("Replay fade", self.preview_scene.replay_fade))
+        preview_actions.addStretch()
+        preview_card.addLayout(preview_actions)
+        preview_column.addStretch()
 
-        presets_card = self.card(layout)
-        preset_row = QHBoxLayout()
-        preset_title = QVBoxLayout()
-        preset_title.setSpacing(4)
-        preset_title.addWidget(self.label("Presets", "sectionTitle"))
-        preset_title.addWidget(self.label("A useful starting point.", "muted"))
-        preset_row.addLayout(preset_title, 1)
-        self.preset_buttons = {}
-        hints = {"Default": "Balanced", "Subtitle": "Cinematic", "Minimal": "Discreet", "High Contrast": "Easy to read"}
-        for name in PRESETS:
-            button = QPushButton(self.t(name) + "\n" + self.t(hints[name]))
-            button.setObjectName("preset")
-            button.setCheckable(True)
-            button.setChecked(name == "Default")
-            button.setMinimumWidth(82)
-            button.clicked.connect(lambda checked=False, n=name: self.apply_preset(n))
-            self.preset_buttons[name] = button
-            preset_row.addWidget(button, 1)
-        presets_card.addLayout(preset_row)
-        presets_card.addWidget(self.button("Restore overlay defaults", self.restore_overlay))
-
-        placement_card = self.card(layout)
+        placement_card = self.card(controls_layout)
         placement_card.addWidget(self.label("Positioning", "sectionTitle"))
         placement = QFormLayout()
         placement.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
+        placement.setRowWrapPolicy(QFormLayout.WrapLongRows)
         placement_card.addLayout(placement)
         self.combo(placement, "position", "Position", [(p, p) for p in ("Below", "Above", "Replace")], overlay=True)
         self.check(placement, "follow_content", "Follow text when scrolling", overlay=True)
@@ -560,29 +583,24 @@ class SettingsWindow(QMainWindow):
         self.overlay_fields["follow_content"].setToolTip(self.t("Translations stay visible until their English text changes or leaves the screen."))
         lifetime = self.combo(placement, "quick_lifetime", "Quick Translate overlay",
             [("source", "Until the text changes"), ("timer", "For a set time")], overlay=True)
-        seconds = self.spin(placement, "quick_seconds", "Seconds (0 = automatic)", 0, 120, overlay=True)
+        seconds = self.spin(placement, "quick_seconds", "Seconds (0 = automatic)", 0, 300, overlay=True)
         seconds.setToolTip(self.t("Automatic time allows a comfortable reading pace for the length of the translation."))
         seconds.setEnabled(self.settings.overlay.quick_lifetime == 'timer')
         lifetime.currentIndexChanged.connect(lambda _index: seconds.setEnabled(lifetime.currentData() == 'timer'))
 
-        advanced = self.button("Advanced tuning", lambda checked: appearance_widget.setVisible(checked))
-        advanced.setCheckable(True)
-        layout.addWidget(advanced)
-        appearance_widget = QWidget()
-        advanced_layout = QVBoxLayout(appearance_widget)
-        advanced_layout.setContentsMargins(0, 0, 0, 0)
-        appearance_card = self.card(advanced_layout)
+        appearance_card = self.card(controls_layout)
         appearance_card.addWidget(self.label("Appearance", "sectionTitle"))
-        layout.addWidget(appearance_widget)
-        appearance_widget.hide()
         appearance = QFormLayout()
         appearance.setVerticalSpacing(8)
         appearance.setHorizontalSpacing(18)
         appearance.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
+        appearance.setRowWrapPolicy(QFormLayout.WrapLongRows)
         appearance_card.addLayout(appearance)
         fonts = QFontDatabase.families()
         preferred = [f for f in ("Segoe UI", "Tahoma", "Arial", "Noto Sans Arabic", "Noto Naskh Arabic") if f in fonts]
-        self.combo(appearance, "font", "Font", [(f, f) for f in preferred + [f for f in fonts if f not in preferred]], overlay=True)
+        font = self.combo(appearance, "font", "Font", [(f, f) for f in preferred + [f for f in fonts if f not in preferred]], overlay=True)
+        font.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        font.setMinimumContentsLength(14)
         self.spin(appearance, "font_size", "Font size", 14, 54, overlay=True)
         for key, title in (("text_color", "Text color"), ("background_color", "Background color")):
             button = QPushButton(getattr(self.settings.overlay, key))
@@ -594,20 +612,25 @@ class SettingsWindow(QMainWindow):
             self.spin(appearance, key, title, low, high, overlay=True)
         self.check(appearance, "shadow", "Text shadow", overlay=True)
 
-        behaviour_card = self.card(advanced_layout)
+        behaviour_card = self.card(controls_layout)
         behaviour_card.addWidget(self.label("Behaviour", "sectionTitle"))
         behaviour = QFormLayout()
         behaviour.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
+        behaviour.setRowWrapPolicy(QFormLayout.WrapLongRows)
         behaviour_card.addLayout(behaviour)
         self.spin(behaviour, "max_width", "Maximum width", 240, 1000, overlay=True)
-        self.check(behaviour, "match_game", "Match game appearance", overlay=True)
-        self.overlay_fields["match_game"].setToolTip(self.t("Overrides font and colours while enabled. Dressmaker uses a warm paper style; other games use sampled contrast."))
+        self.check(behaviour, "match_game", "Match source appearance", overlay=True)
+        self.overlay_fields["match_game"].setToolTip(self.t("Uses colors and contrast sampled from the source text area."))
         self.combo(behaviour, "interaction_hold", "Hold to show close buttons", [(s, s) for s in ('Ctrl+Alt', 'Ctrl+Shift', 'Alt+Shift', 'Ctrl+Alt+Shift')], overlay=True)
         self.spin(behaviour, "fade_ms", "Fade duration (ms)", 0, 1000, overlay=True, step=20)
+        controls_layout.addWidget(self.button("Restore overlay defaults", self.restore_overlay))
+        controls_layout.addStretch()
         for widget in self.overlay_fields.values():
-            if isinstance(widget, QComboBox): widget.currentIndexChanged.connect(self.update_preview)
-            elif isinstance(widget, QCheckBox): widget.toggled.connect(self.update_preview)
-            elif isinstance(widget, (QSpinBox, SliderSpin)): widget.valueChanged.connect(self.update_preview)
+            if isinstance(widget, QComboBox): widget.currentIndexChanged.connect(self.overlay_edited)
+            elif isinstance(widget, QCheckBox): widget.toggled.connect(self.overlay_edited)
+            elif isinstance(widget, (QSpinBox, SliderSpin)): widget.valueChanged.connect(self.overlay_edited)
+        self.update_preview()
+        self.overlay_fields['quick_seconds'].setEnabled(lifetime.currentData() == 'timer')
 
     def color_swatch(self, button):
         pix = QPixmap(20, 20); pix.fill(QColor(button.text()))
@@ -620,15 +643,7 @@ class SettingsWindow(QMainWindow):
         if color.isValid():
             button.setText(color.name())
             self.color_swatch(button)
-            self.update_preview()
-
-    def apply_preset(self, name):
-        for preset_name, button in self.preset_buttons.items():
-            button.setChecked(preset_name == name)
-        for key, value in PRESETS[name].items():
-            widget = self.overlay_fields[key]
-            widget.setChecked(value) if isinstance(widget, QCheckBox) else widget.setValue(value)
-        self.update_preview()
+            self.overlay_edited()
 
     def restore_overlay(self):
         defaults = OverlaySettings()
@@ -648,9 +663,8 @@ class SettingsWindow(QMainWindow):
                 widget.setText(value)
                 self.color_swatch(widget)
             widget.blockSignals(False)
-        for name, button in self.preset_buttons.items():
-            button.setChecked(name == 'Default')
-        self.update_preview()
+        self.overlay_fields['quick_seconds'].setEnabled(self.overlay_fields['quick_lifetime'].currentData() == 'timer')
+        self.overlay_edited()
 
     @staticmethod
     def field_value(widget):
@@ -665,17 +679,16 @@ class SettingsWindow(QMainWindow):
     def update_preview(self):
         for key, widget in self.overlay_fields.items():
             setattr(self.preview_appearance, key, self.field_value(widget))
-        from .appearance import effective_appearance
-        self.preview.appearance = effective_appearance(self.preview_appearance, 'Dressmaker')
-        self.preview.refresh()
-        self.preview_scene.position = self.preview_appearance.position
-        self.preview_scene.arrange()
-        effect = self.preview.graphicsEffect()
-        if effect is None:
-            from PySide6.QtWidgets import QGraphicsOpacityEffect
-            effect = QGraphicsOpacityEffect(self.preview)
-            self.preview.setGraphicsEffect(effect)
-        effect.setOpacity(self.preview_appearance.opacity / 100)
+        self.preview_scene.set_appearance(self.preview_appearance)
+        self.preview_fit_hint.setVisible(self.preview_appearance.position == 'Replace')
+        self.preview_match_hint.setVisible(self.preview_appearance.match_game)
+
+    def overlay_edited(self):
+        self.update_preview()
+        self.overlay_changed.emit(self.overlay_values())
+
+    def overlay_values(self):
+        return {**self.overlay_reset, **{key: self.field_value(widget) for key, widget in self.overlay_fields.items()}}
 
     def shortcuts(self, layout):
         self.heading(layout, "Shortcuts", "One shortcut away.")
@@ -840,7 +853,7 @@ class SettingsWindow(QMainWindow):
 
     def apply(self, checked=False, test=False):
         values = {key: self.field_value(widget) for key, widget in self.fields.items()}
-        values["overlay"] = {**self.overlay_reset, **{key: self.field_value(widget) for key, widget in self.overlay_fields.items()}}
+        values["overlay"] = self.overlay_values()
         values["shortcuts"] = {key: widget.keySequence().toString(QKeySequence.PortableText).replace("Meta", "Win") for key, widget in self.shortcut_fields.items()}
         items = [self.ignore_list.topLevelItem(i) for i in range(self.ignore_list.topLevelItemCount())]
         values["ignored"] = [item.text(0) for item in items]
@@ -863,3 +876,100 @@ class SettingsWindow(QMainWindow):
             self.hide()
         else:
             self.showMinimized()
+
+
+class ToolboxWindow(QWidget):
+    action_requested = Signal(str)
+    watch_startup_changed = Signal(str)
+    pin_changed = Signal(bool)
+    settings_requested = Signal()
+
+    def __init__(self, settings, localization):
+        super().__init__()
+        self.settings, self.l = settings, localization
+        self.watch_enabled = False
+        self.setWindowFlags(Qt.Window | Qt.FramelessWindowHint
+                            | (Qt.WindowStaysOnTopHint if settings.toolbox_pinned else Qt.WindowType(0)))
+        self.setWindowTitle("Arabic Lens")
+        self.setWindowIcon(lens_icon(active=True))
+        self.setStyleSheet(STYLE)
+        self.build()
+
+    def build(self):
+        self.setLayoutDirection(Qt.RightToLeft if self.settings.language == "ar" else Qt.LeftToRight)
+        old = self.layout()
+        if old is not None:
+            for index in reversed(range(old.count())):
+                widget = old.takeAt(index).widget()
+                widget.hide()
+                widget.deleteLater()
+        root = old if old is not None else QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
+        root.setSizeConstraint(QVBoxLayout.SetNoConstraint)
+        from .titlebar import TitleBar
+        titlebar = TitleBar(self, self.l.t, compact=True)
+        self.pin = titlebar.control("", self.l.t("Keep toolbox on top"), lambda: self.set_pinned(self.pin.isChecked()))
+        self.pin.setIcon(line_icon("pin", 20))
+        self.pin.setCheckable(True)
+        self.pin.setChecked(self.settings.toolbox_pinned)
+        settings = titlebar.control("", self.l.t("Open full settings"), self.settings_requested.emit)
+        settings.setIcon(line_icon("expand", 20))
+        titlebar.add_control(self.pin)
+        titlebar.add_control(settings)
+        root.addWidget(titlebar)
+        body = QWidget()
+        content = QVBoxLayout(body)
+        content.setContentsMargins(16, 12, 16, 16)
+        content.setSpacing(8)
+        root.addWidget(body)
+        for action, title, label, icon in (
+            ("watch", "Watch Mode", "Start", "eye"),
+            ("quick", "Quick Translate", "Select text", "capture"),
+            ("repeat", "Translate Again", "Translate", "repeat"),
+        ):
+            card = QFrame()
+            card.setObjectName("card")
+            card_layout = QVBoxLayout(card)
+            card_layout.setContentsMargins(11, 8, 11, 8)
+            row = QHBoxLayout()
+            glyph = QLabel()
+            glyph.setPixmap(line_icon(icon, 20).pixmap(20, 20))
+            row.addWidget(glyph)
+            name = QLabel(self.l.t(title))
+            name.setObjectName("sectionTitle")
+            row.addWidget(name, 1)
+            shortcut = QLabel(self.settings.shortcuts[action].replace("+", " + "))
+            shortcut.setObjectName("shortcut")
+            row.addWidget(shortcut)
+            button = QPushButton(self.l.t(label))
+            button.setMinimumWidth(92)
+            button.clicked.connect(lambda checked=False, command=action: self.action_requested.emit(command))
+            row.addWidget(button)
+            card_layout.addLayout(row)
+            if action == "watch":
+                button.setObjectName("primary")
+                self.watch_button = button
+                choices, self.watch_choices = watch_choices(body, self.l.t, self.settings.watch_startup,
+                                                           self.watch_startup_changed.emit)
+                card_layout.addLayout(choices)
+            content.addWidget(card)
+        self.update_watch(self.watch_enabled)
+        self.setFixedSize(max(454, root.minimumSize().width()), root.sizeHint().height())
+
+    def set_pinned(self, pinned):
+        shown = self.isVisible()
+        pos = self.pos()
+        self.setWindowFlag(Qt.WindowStaysOnTopHint, pinned)
+        if shown:
+            self.move(pos)
+            self.show()
+            self.raise_()
+        self.pin_changed.emit(pinned)
+
+    def select_watch_startup(self, mode):
+        select_watch_choice(self.watch_choices, mode)
+
+    def update_watch(self, enabled):
+        self.watch_enabled = enabled
+        self.watch_button.setText(self.l.t("Stop" if enabled else "Start"))

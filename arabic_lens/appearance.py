@@ -10,7 +10,7 @@ def sample_style(image):
     return {'background': [int(r), int(g), int(b)]}
 
 
-def effective_appearance(base, application='', hint=None):
+def effective_appearance(base, hint=None):
     if not base.match_game:
         return replace(base)
     if (hint or {}).get('cell_background'):
@@ -20,16 +20,11 @@ def effective_appearance(base, application='', hint=None):
             text_color='#493b31' if luminance > 185 else '#ffffff',
             background_color='#' + ''.join(f'{c:02x}' for c in rgb), background_opacity=100,
             padding=2, radius=2, shadow=False, outline=0, border_width=0)
-    if 'dressmaker' in application.casefold():
-        return replace(base, font='Traditional Arabic', font_size=34,
-            text_color='#493b31', background_color='#f7eee2', background_opacity=96,
-            padding=14, radius=5, outline=0, shadow=False,
-            border_color='#ad8b51', border_width=1)
     rgb = (hint or {}).get('background', [25, 29, 34])
     luminance = sum(a * b for a, b in zip(rgb, [.2126, .7152, .0722]))
     light = luminance > 145
     # Desaturate toward a readable light/dark surface instead of copying a busy
-    # scene literally. Exact game font recognition is deliberately not claimed.
+    # scene literally.
     neutral = 245 if light else 18
     mixed = [round(c * .18 + neutral * .82) for c in rgb]
     return replace(base, font='Segoe UI', text_color='#272c30' if light else '#ffffff',

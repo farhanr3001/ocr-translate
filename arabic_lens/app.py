@@ -16,7 +16,7 @@ from .windows import active_window, set_startup, window_identity, window_at_rect
 from .source_monitor import SourceWindowMonitor
 from .models import Rect, Translation
 from .engine import Engine
-from .ui import SettingsWindow, lens_icon
+from .ui import SettingsWindow, ToolboxWindow, lens_icon
 from .overlay import OverlayManager, display_maps, physical_to_logical, DiagnosticOverlay
 from .selection import SelectionManager
 from .hotkeys import HotkeyManager
@@ -28,6 +28,7 @@ from .version import APP_VERSION
 
 
 UPDATE_REPOSITORY = 'https://github.com/farhanr3001/ocr-translate'
+STARTUP_UPDATE_DELAY_MS = 750
 
 
 class UpdateEvents(QObject):
@@ -78,19 +79,26 @@ class Application:
         logging.getLogger("arabic_lens").addHandler(handler)
         logging.getLogger("arabic_lens").setLevel(logging.INFO)
         self.store = TranslationStore(self.service.directory / "translations.db", self.settings)
-        try:
-            self.store.seed_pack(Path(__file__).parent / 'data' / 'dressmaker.json')
-        except (OSError, ValueError):
-            # An optional phrase pack must never prevent normal translation.
-            logging.getLogger('arabic_lens').warning('Optional seed pack unavailable')
         self.engine = Engine(self.settings, self.store)
         self.window = SettingsWindow(self.settings, self.l, self.store)
+        self.toolbox = ToolboxWindow(self.settings, self.l)
+        self.control_view = 'toolbox'
         if qt.property('smokeTest'):
             self.window.setAttribute(Qt.WA_DontShowOnScreen, True)
         self.window.apply_requested.connect(self.apply)
+        self.window.overlay_changed.connect(self.edit_overlay)
+        self.overlay_save_timer = QTimer(self.qt)
+        self.overlay_save_timer.setSingleShot(True)
+        self.overlay_save_timer.setInterval(250)
+        self.overlay_save_timer.timeout.connect(self.service.save)
         self.window.action_requested.connect(self.action)
         self.window.watch_startup_changed.connect(self.set_watch_startup)
+        self.window.toolbox_requested.connect(self.show_toolbox)
         self.window.update_requested.connect(lambda: self.check_updates(manual=True))
+        self.toolbox.action_requested.connect(self.action)
+        self.toolbox.watch_startup_changed.connect(self.set_watch_startup)
+        self.toolbox.settings_requested.connect(self.show_settings)
+        self.toolbox.pin_changed.connect(self.pin_toolbox)
         self.overlays = OverlayManager(self.settings, self.report, self.forget_overlay)
         from .progress import TranslationProgress
         self.progress = TranslationProgress(self.settings, self.l)
@@ -147,15 +155,17 @@ class Application:
         self.update_dialog = None
         self.defer_update_prompt = False
         self.tray = QSystemTrayIcon(lens_icon(), self.qt)
-        self.tray.activated.connect(lambda reason: self.show_settings() if reason == QSystemTrayIcon.DoubleClick else None)
-        self.tray.messageClicked.connect(self.show_settings)
+        self.tray.activated.connect(lambda reason: self.open_controls() if reason == QSystemTrayIcon.DoubleClick else None)
+        self.tray.messageClicked.connect(self.open_controls)
         self.rebuild_tray()
         if not qt.property('smokeTest'):
             self.tray.show()
         self.closing = False
         self.qt.aboutToQuit.connect(self.shutdown)
-        if self.settings.first_run or not (minimized or self.settings.start_minimized):
+        if qt.property('smokeTest'):
             self.window.show()
+        elif not (minimized or self.settings.start_minimized):
+            self.show_toolbox()
         if self.settings.remember_mode and self.settings.last_watch and not self.settings.first_run:
             self.engine.set_watch(True)
         self.update_timer = QTimer(self.qt)
@@ -163,7 +173,7 @@ class Application:
         self.update_timer.timeout.connect(self.check_updates)
         if not qt.property('smokeTest') and self.settings.auto_check_updates:
             self.update_timer.start()
-            QTimer.singleShot(12000, self.check_updates)
+            QTimer.singleShot(STARTUP_UPDATE_DELAY_MS, self.check_updates)
 
     def rebuild_tray(self):
         menu = QMenu()
@@ -179,6 +189,7 @@ class Application:
         pause = menu.addAction(self.l.t("Resume Translation" if self.paused else "Pause Translation"))
         pause.triggered.connect(lambda: self.action("pause"))
         menu.addSeparator()
+        menu.addAction(self.l.t("Open toolbox"), self.show_toolbox)
         menu.addAction(self.l.t("Settings"), self.show_settings)
         menu.addAction(self.l.t("History"), lambda: self.show_settings(7))
         menu.addSeparator()
@@ -188,14 +199,60 @@ class Application:
         self.tray_menu = menu
 
     def show_settings(self, page=None):
+        self.control_view = 'settings'
+        self.toolbox.hide()
         if page is not None:
             self.window.navigate(page)
-        self.window.showNormal()
-        self.window.raise_()
-        self.window.activateWindow()
+        self.show_control_window(self.window)
+
+    def show_toolbox(self):
+        self.control_view = 'toolbox'
+        self.window.hide()
+        self.show_control_window(self.toolbox)
+
+    def open_controls(self):
+        if self.window.isVisible() and not self.window.isMinimized():
+            self.show_settings()
+        else:
+            self.show_toolbox()
+
+    def show_control_window(self, window):
+        if window.isMinimized():
+            window.showNormal()
+        else:
+            window.show()
+        window.raise_()
+        window.activateWindow()
         if self.defer_update_prompt and self.update_info:
             self.defer_update_prompt = False
-            QTimer.singleShot(200, self.show_update_prompt)
+            QTimer.singleShot(0, self.show_update_prompt)
+
+    def visible_controls(self):
+        for window in (self.window, getattr(self, 'toolbox', None)):
+            if window and window.isVisible() and not window.isMinimized():
+                return window
+        return None
+
+    def hide_controls(self):
+        self.window.hide()
+        toolbox = getattr(self, 'toolbox', None)
+        if toolbox:
+            toolbox.hide()
+
+    def restore_controls(self):
+        if getattr(self, 'control_view', 'settings') == 'toolbox':
+            self.show_toolbox()
+        else:
+            self.show_settings(3)
+
+    def pin_toolbox(self, pinned):
+        self.settings.toolbox_pinned = pinned
+        self.service.save()
+
+    def edit_overlay(self, values):
+        for name, value in values.items():
+            setattr(self.settings.overlay, name, value)
+        self.overlay_save_timer.start()
 
     def check_updates(self, manual=False):
         """Check a public release without making the GUI or gameplay wait."""
@@ -235,7 +292,7 @@ class Application:
         recently_prompted = (last_version == info.version and isinstance(last_time, (int, float))
             and 0 <= now - last_time < 24 * 60 * 60)
         if manual or not recently_prompted:
-            if self.window.isVisible():
+            if self.visible_controls() is not None:
                 self.show_update_prompt()
             else:
                 self.defer_update_prompt = True
@@ -247,11 +304,15 @@ class Application:
     def show_update_prompt(self):
         if self.closing or not self.update_info or (self.update_prompt and self.update_prompt.isVisible()):
             return
+        owner = self.visible_controls()
+        if owner is None:
+            self.defer_update_prompt = True
+            return
         info = self.update_info
         self.settings.update_last_prompt_version = info.version
         self.settings.update_last_prompt_time = time.time()
         self.service.save()
-        box = QMessageBox(self.window)
+        box = QMessageBox(owner)
         box.setIcon(QMessageBox.Information)
         box.setWindowTitle(self.l.t("Update available"))
         box.setText(self.l.t("A new Arabic Lens version is available. Download and install it now?")
@@ -271,7 +332,7 @@ class Application:
         if self.update_download_job and not self.update_download_job.done():
             return
         dialog = QProgressDialog(self.l.t("Downloading update…"), self.l.t("Cancel download"),
-            0, 1000, self.window)
+            0, 1000, self.visible_controls() or self.window)
         dialog.setWindowTitle(self.l.t("Update available"))
         dialog.setMinimumDuration(0)
         dialog.setAutoClose(False)
@@ -370,7 +431,7 @@ class Application:
                 self.engine.hide()
                 self.overlays.clear(immediate=True)
                 self.source_monitor.clear()
-            self.window.hide()
+            self.hide_controls()
             self.selector.begin()
         elif action == 'select_watch_area' and not self.paused:
             self.begin_area_setup([])
@@ -420,7 +481,7 @@ class Application:
         elif action.startswith("region:"):
             index = int(action.split(":")[1])
             if 0 <= index < len(self.settings.pinned_regions) and not self.paused:
-                self.window.hide()
+                self.hide_controls()
                 self.recapture(Rect(*self.settings.pinned_regions[index]["rect"]))
         elif action.startswith("unpin:"):
             index = int(action.split(":")[1])
@@ -448,6 +509,9 @@ class Application:
     def set_watch_startup(self, choice):
         if choice in ('fullscreen', 'new', 'previous', 'presets'):
             self.settings.watch_startup = choice
+            if hasattr(self, 'toolbox'):
+                self.window.select_watch_startup(choice)
+                self.toolbox.select_watch_startup(choice)
             self.service.save()
 
     def start_watch_choice(self, choice):
@@ -468,7 +532,7 @@ class Application:
         QTimer.singleShot(120, lambda: self.engine.set_watch(True))
 
     def show_watch_presets(self, selected=-1):
-        self.window.hide()
+        self.hide_controls()
         if self.preset_dialog is None:
             dialog = WatchPresetsDialog(self.l)
             dialog.create_requested.connect(self.choose_preset_target)
@@ -487,7 +551,7 @@ class Application:
         if self.preset_dialog:
             self.preset_dialog.hide()
         if not self.closing and not self.engine.watch and not self.selector.windows:
-            self.show_settings(3)
+            self.restore_controls()
 
     def delete_watch_preset(self, index):
         if not 0 <= index < len(self.settings.watch_presets):
@@ -543,12 +607,13 @@ class Application:
         # Enabling from Settings can otherwise leave the shell/taskbar in the
         # foreground. The topmost external app is only brought back into focus;
         # it is never saved as an executable restriction for these screen zones.
-        visible = getattr(self.window, 'isVisible', lambda: False)()
+        visible = any(getattr(window, 'isVisible', lambda: False)()
+                      for window in (self.window, getattr(self, 'toolbox', None)))
         preset_visible = self.preset_dialog and getattr(self.preset_dialog, 'isVisible', lambda: False)()
         targets = open_windows() if visible or preset_visible else []
         if self.preset_dialog:
             self.preset_dialog.hide()
-        self.window.hide()
+        self.hide_controls()
         if targets:
             QTimer.singleShot(60, lambda hwnd=targets[0]['hwnd']: focus_chosen_window(hwnd))
 
@@ -566,7 +631,7 @@ class Application:
         self.selection_window = window_identity(hwnd) if hwnd else None
         self.selection_target = target
         self.selection_existing = [Rect(*area) if isinstance(area, list) else area for area in existing]
-        self.window.hide()
+        self.hide_controls()
         if self.preset_dialog:
             self.preset_dialog.hide()
         QTimer.singleShot(120, self.begin_multi_selection)
@@ -630,7 +695,7 @@ class Application:
                 self.pending_preset_name = ''
                 self.show_watch_presets(self.preset_dialog.list.currentRow() if self.preset_dialog else -1)
             else:
-                self.show_settings(3)
+                self.restore_controls()
 
     def schedule_capture(self, rect, title, source):
         request = self.capture_request
@@ -665,7 +730,7 @@ class Application:
             return
         self.overlays.clear(immediate=True)
         self.source_monitor.clear()
-        self.window.hide()
+        self.hide_controls()
         active = active_window()
         source = window_identity(active[0]) if active else None
         self.schedule_capture(rect, active[2] if active else "", source)
@@ -700,7 +765,7 @@ class Application:
         self.report(message)
         result = Translation('manual-notice', '', message, rect, source_window=None, notice=True)
         self.show_translation(result)
-        if not self.window.isVisible() and self.tray.isVisible():
+        if self.visible_controls() is None and self.tray.isVisible():
             self.tray.showMessage(self.l.t('Screen translation unavailable'), message,
                                   QSystemTrayIcon.Warning, 7000)
 
@@ -722,6 +787,7 @@ class Application:
     def watch_changed(self, enabled):
         self.settings.last_watch = enabled
         self.window.update_watch(enabled)
+        self.toolbox.update_watch(enabled)
         self.tray.setIcon(lens_icon(active=enabled))
         self.rebuild_tray()
 
@@ -784,6 +850,7 @@ class Application:
         if not self.settings.debug:
             self.clear_debug()
         self.window.rebuild(page)
+        self.toolbox.build()
         self.rebuild_tray()
         self.report("Changes saved")
         if values["test"]:
@@ -855,6 +922,7 @@ class Application:
             return
         self.closing = True
         self.update_timer.stop()
+        self.overlay_save_timer.stop()
         for job in (self.update_check_job, self.update_download_job):
             if job and not job.done():
                 job.cancel()
@@ -878,6 +946,14 @@ def run(directory=None, minimized=False, smoke=False):
     qt.setOrganizationName("ArabicLens")
     qt.setQuitOnLastWindowClosed(False)
     qt.setProperty('smokeTest', smoke)
+    background_smoke = smoke and minimized
+    if background_smoke:
+        from PySide6.QtWidgets import QWidget
+        show = QWidget.show
+        def show_offscreen(widget):
+            widget.setAttribute(Qt.WA_DontShowOnScreen, True)
+            show(widget)
+        QWidget.show = show_offscreen
     try:
         app = Application(qt, directory, minimized)
     except RuntimeError as exc:
@@ -887,6 +963,7 @@ def run(directory=None, minimized=False, smoke=False):
         path = Path(directory or "artifacts")
         path.mkdir(parents=True, exist_ok=True)
         def screenshot():
+            app.toolbox.grab().save(str(path / "toolbox.png"))
             app.window.grab().save(str(path / "home.png"))
             app.window.navigate(4)
             QTimer.singleShot(300, overlay_shot)
@@ -929,7 +1006,8 @@ def run(directory=None, minimized=False, smoke=False):
                     return
                 done[0] = True
                 (path / 'screen-translation.json').write_text(json.dumps(
-                    dict(success=success, **details), ensure_ascii=False), encoding='utf-8')
+                    dict(success=success, offscreen_pixels=background_smoke, **details),
+                    ensure_ascii=False), encoding='utf-8')
                 fixture.close()
                 qt.exit(0 if success else 1)
             def translated(result):
@@ -945,6 +1023,22 @@ def run(directory=None, minimized=False, smoke=False):
             app.engine.translated.connect(translated)
             app.engine.manual_failed.connect(lambda code, *_: finish(False, error=code))
             def capture_fixture():
+                if background_smoke:
+                    # Reuse the packaged OCR, translator and overlay with pixels
+                    # rendered by Qt when a developer is using the real desktop.
+                    import numpy as np
+                    from PySide6.QtGui import QImage
+                    screenshot = fixture.grab().toImage().convertToFormat(QImage.Format_ARGB32)
+                    pixels = np.frombuffer(screenshot.constBits(), dtype=np.uint8).reshape(
+                        screenshot.height(), screenshot.width(), 4).copy()
+                    cap = app.engine.capture
+                    original = cap.capture
+                    def capture_sample(rect):
+                        return pixels if rect == sample_rect else original(rect)
+                    sample_rect = Rect(40, 70, screenshot.width(), screenshot.height())
+                    cap.capture = capture_sample
+                    app.engine.translate_region(sample_rect, 'Packaged background translation test', None)
+                    return
                 point = fixture.mapToGlobal(fixture.rect().topLeft())
                 rect = logical_to_physical(fixture.screen(), Rect(point.x(), point.y(), fixture.width(),fixture.height()))
                 app.engine.translate_region(rect, 'Packaged screen translation test', None)

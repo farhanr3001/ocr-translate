@@ -6,12 +6,6 @@ from pathlib import Path
 from dataclasses import dataclass, field, asdict
 
 DEFAULT_IGNORE = ["Exit", "Exit Game", "Quit", "Quit Game", "Close", "Cancel", "Back", "Continue", "Restart", "Resume", "Leave", "Start", "Play", "Pause", "Settings", "Options", "Apply", "Confirm", "Yes", "No", "OK", "Save", "Load", "Menu", "Skip"]
-PRESETS = {
-    "Default": dict(font_size=23, background_opacity=78, padding=14, radius=12, shadow=True, outline=0, max_width=560),
-    "Subtitle": dict(font_size=27, background_opacity=32, padding=10, radius=6, shadow=True, outline=1, max_width=720),
-    "Minimal": dict(font_size=21, background_opacity=58, padding=9, radius=8, shadow=True, outline=0, max_width=480),
-    "High Contrast": dict(font_size=25, background_opacity=95, padding=16, radius=10, shadow=True, outline=1, max_width=600),
-}
 
 
 @dataclass
@@ -49,6 +43,7 @@ class Settings:
     language: str = "en"
     first_run: bool = True
     start_minimized: bool = False
+    toolbox_pinned: bool = False
     start_windows: bool = False
     minimize_tray: bool = True
     remember_mode: bool = False

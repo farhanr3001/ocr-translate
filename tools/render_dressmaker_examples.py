@@ -40,7 +40,7 @@ async def run():
     directory.mkdir(parents=True, exist_ok=True)
     settings = Settings()
     store = TranslationStore(directory / 'test-cache.db', settings)
-    store.seed_pack(Path('arabic_lens/data/dressmaker.json'))
+    store.seed_pack(Path('tests/fixtures/screen_phrase_pack.json'))
     ocr = OcrService(WindowsOcrProvider(), TextFilterService(settings))
     detector = TextRegionDetector()
     evidence = []
@@ -82,7 +82,7 @@ async def run():
             occupied = []
             surfaces = []
             for bounds, arabic, hint, avoid in detected[:settings.max_regions]:
-                appearance = effective_appearance(settings.overlay, 'Dressmaker', hint)
+                appearance = effective_appearance(settings.overlay, hint)
                 surface = ArabicSurface(appearance, arabic)
                 surface.setParent(fixture)
                 if appearance.position == 'Replace':

@@ -160,7 +160,7 @@ def test_manual_failure_is_not_hidden_by_invalid_source(monkeypatch):
     from arabic_lens.localization import LocalizationService
     notices, messages, balloons = [], [], []
     fake = SimpleNamespace(l=LocalizationService(Settings()), report=messages.append,
-        show_translation=notices.append, window=SimpleNamespace(isVisible=lambda: False),
+        show_translation=notices.append, visible_controls=lambda: None,
         tray=SimpleNamespace(isVisible=lambda: True, showMessage=lambda *args: balloons.append(args)))
     Application.manual_failed(fake, 'ocr_language', Rect(10, 20, 400, 100), (123, 1, Rect(0,0,100,100)))
     assert notices[0].source_window is None and notices[0].notice

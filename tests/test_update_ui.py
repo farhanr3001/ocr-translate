@@ -8,7 +8,7 @@ from arabic_lens.app import Application
 from arabic_lens.config import Settings
 from arabic_lens.localization import LocalizationService
 from arabic_lens.storage import TranslationStore
-from arabic_lens.ui import SettingsWindow
+from arabic_lens.ui import SettingsWindow, ToolboxWindow
 from arabic_lens.updates import UpdateInfo
 
 
@@ -55,6 +55,7 @@ def test_check_notification_defers_while_settings_hidden(tmp_path):
     app.closing = False
     app.settings = settings
     app.window = window
+    app.toolbox = ToolboxWindow(settings, LocalizationService(settings))
     app.tray = SimpleNamespace(isVisible=lambda: True, showMessage=lambda *args: balloons.append(args))
     app.l = LocalizationService(settings)
     app.update_info = None
@@ -66,7 +67,13 @@ def test_check_notification_defers_while_settings_hidden(tmp_path):
         assert len(balloons) == 1
         assert not prompts
         assert window.update_status_label.text() == "Update available · 0.2.0"
+        app.toolbox.show()
+        app.update_checked(update_info(), None, False)
+        assert prompts == [True]
+        assert app.visible_controls() is app.toolbox
     finally:
+        app.toolbox.close()
+        app.toolbox.deleteLater()
         window.deleteLater()
         store.close()
         qt.processEvents()

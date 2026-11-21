@@ -43,7 +43,7 @@ def test_official_dressmaker_dialogue_and_all_attribute_cells(tmp_path):
     assert 'paint stains' in brief.text and '800' in brief.text
     assert not brief.standalone
     store = TranslationStore(tmp_path / 'cache.db', Settings())
-    store.seed_pack(fixture.parents[2] / 'arabic_lens/data/dressmaker.json')
+    store.seed_pack(fixture.parents[2] / 'tests/fixtures/screen_phrase_pack.json')
     assert '800' in store.get(brief.text)
     expected = {'daywear', 'casual', 'cool', 'cute', 'playful', 'profession', 'simple',
         'flowers', 'patterned', 'elaborate', 'workwear', 'romantic', 'elegant', 'gothic', 'warm', 'risque'}

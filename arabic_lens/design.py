@@ -30,8 +30,6 @@ QPushButton#primary:hover { background: #348c6b; }
 QPushButton#nav { background: transparent; color: #5f7264; border: 0; text-align: left; padding: 12px 14px; font-weight: 500; }
 QPushButton#nav:checked { background: #dce9d9; color: #1e523b; border: 1px solid #cadcc5; font-weight: 650; }
 QPushButton#nav:hover { background: #e3ebde; color: #284e38; }
-QPushButton#preset { background: #cbd6cc; border: 1px solid #dae3d5; padding: 12px 8px; font-weight: 500; }
-QPushButton#preset:checked { background: #e8f3e3; border: 2px solid #5c9870; color: #235039; }
 QLineEdit, QTextEdit, QPlainTextEdit, QComboBox, QSpinBox, QKeySequenceEdit { background: #c8d3ca; color: #2c4334; border: 1px solid #b4c9b4; border-radius: 6px; padding: 6px 9px; min-height: 19px; selection-background-color: #d8eacc; selection-color: #173d28; }
 QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QKeySequenceEdit:focus { border-color: #6b9f7c; }
 QComboBox::drop-down { border: 0; width: 24px; }
@@ -135,6 +133,17 @@ def line_icon(kind, size=22, color="#527462"):
         path = QPainterPath(QPointF(2,12)); path.quadTo(12,0,22,12); path.quadTo(12,24,2,12); p.drawPath(path); p.drawEllipse(QRectF(9,9,6,6))
     elif kind == "repeat":
         p.drawArc(QRectF(4,4,16,16), 35*16, 285*16); p.drawLine(20,3,20,9); p.drawLine(20,9,14,9)
+    elif kind == "pin":
+        path = QPainterPath(QPointF(8, 4))
+        path.lineTo(16, 4); path.lineTo(15, 11); path.lineTo(18, 15)
+        path.lineTo(6, 15); path.lineTo(9, 11); path.closeSubpath()
+        p.drawPath(path); p.drawLine(12, 15, 12, 21)
+    elif kind in ("expand", "toolbox"):
+        p.drawRoundedRect(QRectF(3, 4, 18, 16), 2, 2)
+        if kind == "expand":
+            p.drawLine(9, 15, 15, 9); p.drawLine(11, 9, 15, 9); p.drawLine(15, 9, 15, 13)
+        else:
+            p.drawRoundedRect(QRectF(6, 11, 8, 6), 1, 1)
     p.end()
     return QIcon(pix)
 
@@ -148,6 +157,7 @@ class PreviewScene(QWidget):
         self.source = None
         self.surface = None
         self.position = "Below"
+        self.fill_scene = False
 
     def arrange(self):
         if not self.source or not self.surface:
@@ -175,7 +185,12 @@ class PreviewScene(QWidget):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
         p.setClipPath(self.clip_path())
-        p.scale(self.width() / 1000, self.height() / 195)
+        sx, sy = self.width() / 1000, self.height() / 195
+        if self.fill_scene:
+            scale = max(sx, sy)
+            p.translate((self.width() - 1000 * scale) / 2, (self.height() - 195 * scale) / 2)
+            sx = sy = scale
+        p.scale(sx, sy)
         sky = QLinearGradient(0,0,0,195)
         sky.setColorAt(0,QColor("#d6dfd3")); sky.setColorAt(.55,QColor("#e9d9bd")); sky.setColorAt(1,QColor("#aea998"))
         p.fillRect(0,0,1000,195,sky)

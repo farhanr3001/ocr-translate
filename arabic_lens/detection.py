@@ -27,7 +27,7 @@ class TextRegionDetector:
         # into an ornate tooltip border or surrounding game artwork.
         mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_RECT, (9, 1)))
         # Text inside bordered dialogue/tooltips is nested within the panel's
-        # contour. RETR_EXTERNAL silently discarded those lines in Dressmaker.
+        # contour. RETR_EXTERNAL would discard text inside a detected panel.
         contours, _ = cv2.findContours(mask, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
         lines = []
         for c in contours:

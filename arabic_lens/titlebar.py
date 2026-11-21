@@ -3,16 +3,17 @@ from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton
 
 
 class TitleBar(QFrame):
-    def __init__(self, window, translate):
+    def __init__(self, window, translate, *, compact=False):
         super().__init__()
         self.window = window
-        self.setFixedHeight(48)
+        self.setFixedHeight(42 if compact else 48)
         self.setLayoutDirection(Qt.LeftToRight)
         self.setStyleSheet('''QFrame { background: #b7c6bc; border-bottom: 1px solid #a2b5a9; }
             QLabel { color: #2d594a; border: none; font-size: 13px; }
             QPushButton { border: none; border-radius: 6px; background: transparent;
                 color: #2d594a; font-size: 19px; min-height: 30px; padding: 0; }
             QPushButton:hover { background: #c3d0c6; }
+            QPushButton:checked { background: #dce9d9; color: #1e523b; }
             QPushButton#windowClose:hover { background: #d65345; color: white; }''')
         row = QHBoxLayout(self)
         row.setContentsMargins(20, 5, 10, 5)
@@ -20,12 +21,19 @@ class TitleBar(QFrame):
         name.setAttribute(Qt.WA_TransparentForMouseEvents)
         row.addWidget(name)
         row.addStretch()
-        self.minimize = self.control('−', translate('Minimize'), window.showMinimized)
-        self.maximize = self.control('□', translate('Maximize or restore'), self.toggle_maximized)
+        self.row = row
+        self.maximize = None
+        if not compact:
+            self.minimize = self.control('−', translate('Minimize'), window.showMinimized)
+            self.maximize = self.control('□', translate('Maximize or restore'), self.toggle_maximized)
+            row.addWidget(self.minimize)
+            row.addWidget(self.maximize)
         self.close_button = self.control('×', translate('Close to tray'), window.close)
         self.close_button.setObjectName('windowClose')
-        for button in (self.minimize, self.maximize, self.close_button):
-            row.addWidget(button)
+        row.addWidget(self.close_button)
+
+    def add_control(self, button):
+        self.row.insertWidget(self.row.indexOf(self.close_button), button)
 
     def control(self, text, name, action):
         button = QPushButton(text)
@@ -44,5 +52,5 @@ class TitleBar(QFrame):
             self.window.windowHandle().startSystemMove()
 
     def mouseDoubleClickEvent(self, event):
-        if event.button() == Qt.LeftButton:
+        if self.maximize and event.button() == Qt.LeftButton:
             self.toggle_maximized()

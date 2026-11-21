@@ -27,11 +27,8 @@ Windows 10 2004+ / Windows 11, x64, with English OCR installed, is required.
 No account, API key, internet connection, server or separate model download is needed.
 The HPLT English-to-Arabic model is bundled as an approximately 86 MB int8 model
 and runs only on the CPU with two processing threads at reduced worker priority;
-it is loaded only when uncached text needs translating. A reviewed Dressmaker phrase
-pack supplies fast cache hits, but is not the complete game script. Pack updates add
-missing entries without overwriting your translations. Translation quality can vary.
-No GPU is used for translation. The reviewed pack has 165 entries from eight
-official screenshots and 62 trailer frames. It does not contain unseen game text.
+it is loaded only when uncached text needs translating. Repeated translations can
+come from the local cache. No GPU is used for translation.
 Uncached slang, idioms and noisy OCR can still produce literal or incorrect Arabic.
 
 ## Install and update
@@ -79,10 +76,14 @@ other applications can reserve combinations; Arabic Lens checks availability and
 the previous bindings on conflict. Win, Ctrl, Alt and Shift are supported with letters,
 numbers and function keys. Selection stays within one display per capture.
 
-Closing Settings keeps the app in the tray. Double-click its tray icon to reopen Settings;
-right-click for translation actions, pause, history or exit. Save up to 20 regions from
-**Ignore List → Saved regions**. Saved rectangles are screen positions, not game-relative
-coordinates; recapture them if the game moves or display layout changes.
+Arabic Lens opens to the compact **toolbox**. Its three buttons start or stop Watch
+Mode, select text, and translate the last area again. Choose how Watch starts below
+its Start button. Use the pin to keep the toolbox above other windows, or the expand
+icon to open full settings. The settings title bar has a return-to-toolbox button.
+Double-click the tray icon to reopen the toolbox after closing it. Right-click for
+translation actions, settings, pause, history or exit. Save up to 20 regions from
+**Ignore List → Saved regions**. Saved rectangles use screen positions; recapture
+them if the source moves or the display layout changes.
 
 **Ignore List → Block apps → Add app** lets you choose an open app or an installed
 desktop app, search the list, or browse to an executable. Click **Apply changes** to
@@ -92,8 +93,9 @@ manually. Matching uses the executable path, regardless of the window title.
 App discovery runs only while using the picker; it never launches listed apps.
 
 Scrolling over a settings field does not change its value; use the field, arrows,
-slider or dropdown explicitly. **Overlay → Restore overlay defaults** resets the
-appearance and behaviour together, updates the preview, and saves on Apply.
+slider or dropdown explicitly. The **Overlay** preview stays beside the scrolling
+controls. Changes save automatically and apply to new translations. **Restore overlay
+defaults** resets the appearance and behaviour together.
 Paragraph breaks and list rows are preserved. Quick Capture waits briefly for the selection window to release focus; manual
 OCR/translation failures show a short message near the selected area rather than
 silently leaving you with no result. Changed or disappeared sources invalidate obsolete
@@ -172,8 +174,8 @@ can translate just the label, leaving a separate displayed game value untouched.
 A covering overlay only grows into free space, so it never hides a value or word beside
 its label. Other placement choices anchor near source text and avoid other overlay rectangles.
 Manual captures have no expiry timer: source tracking follows scrolling and removes
-the translation when the English disappears. Four appearance presets and a live RTL
-preview are included. Developer diagnostics are opt-in. An independent 75 ms
+the translation when the English disappears. The live RTL preview shows a sample
+of the configured overlay. Developer diagnostics are opt-in. An independent 75 ms
 source-window check removes only translations attached to a window that closes,
 minimizes, hides, or moves/resizes. Clicking or changing focus alone does not remove
 translations. Late results are rejected. These checks use desktop window state only,
@@ -186,8 +188,8 @@ source text loses its overlay. Tracking is conservative: moving backgrounds,
 large horizontal jumps, zooming and font/layout changes may hide a translation
 instead of following it. Watch Mode can detect stable new text again.
 
-Enable **Match game appearance** to sample cell backgrounds and use a warm paper style
-for Dressmaker dialogue. This setting overrides your regular appearance while enabled.
+Enable **Match source appearance** to sample backgrounds and contrast from the
+screen. This setting can override your regular colors and font.
 Hold **Ctrl+Alt** and hover over an overlay to drag it, close just that translation,
 collapse/expand it, change its text size with **A− / A+**, or copy its Arabic text using
 the copy icon beside the zoom buttons. Controls are compact; the close control is
@@ -195,10 +197,6 @@ a 28px circle outside
 the upper-right corner. A brief checkmark confirms copying. Release the keys to return
 to click-through gameplay. The hold combination is configurable under Overlay.
 
-Public screenshot and trailer-frame checks can be reproduced with
-`tools/evaluate_dressmaker.py` and `tools/render_dressmaker_examples.py`. Example images
-come from real Windows OCR, reviewed cached translations and the native Qt renderer.
-These are screenshot fixture tests, not a claim of testing inside a running game.
 `tools/render_document_examples.py` reproduces paragraph/list examples from the
 attached fixtures using real Windows OCR, the CPU model and Qt, without displaying
 test windows on the desktop.

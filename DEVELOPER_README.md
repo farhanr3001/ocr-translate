@@ -4,7 +4,7 @@ Last reviewed: **18 November 2026** (selected-area reliability and packaged scre
 
 ## Start here
 
-Arabic Lens translates visible English into **Modern Standard Arabic** using ordinary Windows screen capture, Windows OCR, and a bundled English–Arabic translation model. It is a general desktop accessibility utility. Dressmaker, browser pages and the supplied X scrolling recording are test cases, not the scope of the product.
+Arabic Lens translates visible English into **Modern Standard Arabic** using ordinary Windows screen capture, Windows OCR, and a bundled English–Arabic translation model. It is a general desktop accessibility utility for text in applications, websites, videos and games.
 
 The intended experience is: English appears, readable Arabic appears in its place, and the user continues what they were doing. Setup, technical controls, notifications and resource usage must stay out of the way.
 
@@ -24,6 +24,18 @@ For a new session:
 Check the current Git state before issuing Git operations; the working checkout and published release may differ. The previous desktop OCR baseline was recorded before repository initialization.
 
 ## Current verified baseline
+
+### Toolbox and live Overlay settings (0.1.10)
+
+- [x] Verified the native resize messages for all edges and corners, both window modes, shared Watch choices and persisted toolbox pin.
+- [x] Verified fixed preview placement while scrolling, initial placement and color, live style changes, reset and on-disk persistence without Apply. Reviewed offscreen renders in English and Arabic.
+- [x] Verified per-area removal, redraw and confirmation in Watch setup.
+- [x] Moved the initial asynchronous update check to 750 ms. Verified that the toolbox counts as a visible window for update notifications.
+- [ ] Run staged and installed smoke checks, verify both file update packages, deploy and publish, then verify the public updater from 0.1.9.
+
+The compact toolbox is the initial view on a normal launch or tray reopen. It exposes the same Watch startup choice as Settings. Pinning persists and keeps the toolbox above other apps while open. Both control windows hide during region capture. The main window still uses native edge/corner hit testing. Overlay controls update the renderer immediately and debounce disk saves; shutdown also saves pending values. Replace preview fits a sample line using the same renderer as actual overlays. Match source appearance uses a neutral dark sample in the preview and the captured region on screen.
+
+The background suite passed 234 tests with two optional video skips and the desktop-interactive selection fixture excluded. The packaged command `--smoke-test --minimized --data-dir <isolated path>` uses a Qt-rendered English sample, Windows OCR, the bundled model and the actual overlay widget without showing a test window. It sets `offscreen_pixels` in the report to distinguish that test from the visible desktop capture exercised by `--smoke-test`.
 
 ### Consecutive video subtitles (0.1.9)
 
@@ -190,8 +202,8 @@ The executable and portable ZIP were replaced after those checks. Artifacts can 
 | Ignore List | English/Arabic reference columns, bilingual search, add/edit/remove/defaults; only complete standalone labels ignored. |
 | Block apps | Choose open/installed desktop apps or browse to an executable; normalized executable-path matching. Watch skips blocked apps. Manual Quick remains available. |
 | History/cache | Optional searchable history and bounded persistent cache; separate clear actions. |
-| Overlay customization | Font, size, colors, opacity, padding, corner radius, width, outline, shadow, placement, fade, presets, preview and defaults. |
-| Match game appearance | Optional sampled styling overrides regular appearance. Includes warm paper treatment for Dressmaker; not a universal game-theme/font recognizer. |
+| Overlay customization | Font, size, colors, opacity, padding, corner radius, width, outline, shadow, placement, fade, fixed preview and defaults. |
+| Match source appearance | Optional sampled styling overrides the regular appearance based on background and contrast. |
 | Show Translation boxes | Optional capture-excluded outlines with pipeline-stage percentages and error indication. Off by default. |
 
 Shortcuts are editable with modifier combinations. Windows or other programs can reserve keys. Startup registers independent available bindings so one conflict does not disable all of them; settings edits validate conflicts and retain previous bindings when the change fails. An old Alt+R add-zone conflict caused regressions; its default is now Alt+Shift+W.
@@ -306,7 +318,7 @@ Text can still be missed or misread. Residual-stroke auditing improves coverage 
 
 The cache has a 256-entry memory layer and bounded SQLite storage (5,000 default entries). The key normalizes whitespace/case and appropriate punctuation while preserving meaningful explicit line layout. Cache ownership distinguishes the active model or remote-provider configuration; reviewed seed entries can be reused. Do not accidentally serve another model's stale output after switching providers or collapse list layout into a single cache key.
 
-History is optional, defaults to 500 entries, and includes source, Arabic, time and application metadata. The reviewed Dressmaker pack currently has 165 entries from eight official screenshots and 62 trailer frames. This is **pre-seeding**, not model training or the full game script. Seed updates add entries without overwriting user translations. A missing optional pack must not crash startup.
+History is optional, defaults to 500 entries, and includes source, Arabic, time and application metadata. The phrase-pack fixture tests cache insertion without overwriting existing translations. The app does not install that fixture or seed application-specific phrases at startup. Existing user cache entries are retained.
 
 Standalone handles may deliberately remain unchanged. Protected abbreviations and reviewed short terminology avoid mistranslations such as treating NFL as an unrelated organization. Completion and Arabic output are not quality scores: slang, names and wrong OCR can still translate incorrectly.
 
@@ -407,11 +419,10 @@ Required scenarios for future changes:
 
 ### Other fixture and performance tools
 
-- `tools/evaluate_dressmaker.py`, `tools/render_dressmaker_examples.py`: game screenshot OCR and native Arabic overlay examples.
 - `tools/render_document_examples.py`: paragraph/list fixtures with real OCR/model/rendering.
 - `tools/render_watch_ui.py`: settings/workflow rendering.
 - `tools/benchmark_cpu_translation.py`: uncached inference, process CPU/memory and cache timings.
-- `tools/preseed.py`, `tools/expand_dressmaker_pack.py`, `tools/fetch_dressmaker.py`: phrase-pack maintenance. Inspect inputs/network behavior and review Arabic before shipping additions.
+- `tests/fixtures/screen_phrase_pack.json`: historical test phrases used in cache regression tests.
 
 Benchmark cold startup, warm uncached text, cache hits, burst throughput, idle scanning and scrolling separately. Keep model settings equal when comparing batching. Measure on the target laptop before promising its resource use. Do not trade away required text coverage or source tracking to improve a timing number.
 
@@ -473,7 +484,6 @@ The backend's offline HTTP/process tests are in [tests/test_updates.py](tests/te
 | Symptom | Investigate / established prevention |
 | --- | --- |
 | `QtCore` import DLL error / specified procedure not found | Packaging runtime DLL versions and polluted PATH/ICU discovery; preserve spec/build protections and test the staged EXE. |
-| Missing `data/dressmaker.json` crashes EXE | Active data must be bundled; optional seed load must fail gracefully. |
 | Alt+Q unavailable while UI capture works | Check registration results and collisions, independent startup bindings, active competing instances and settings rollback. Do not assume selection rendering is at fault. |
 | Quick result flashes then vanishes | Check source HWND sampled after selection closes, revision checks, source monitor and capture exclusion. Do not fix by a longer expiry timer. |
 | Clicking clears static text | Look for input/focus-driven invalidation, erroneous source identity and mouse-handler modifier races. |

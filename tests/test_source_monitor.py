@@ -76,7 +76,7 @@ def test_cache_upgrade_keeps_reviewed_text_but_bypasses_old_model(tmp_path):
     db.commit()
     db.close()
     store = TranslationStore(path, Settings())
-    store.seed_pack(Path('arabic_lens/data/dressmaker.json'))
+    store.seed_pack(Path('tests/fixtures/screen_phrase_pack.json'))
     assert store.get('An unknown phrase') is None
     assert store.get('Finish Dress') == 'إنهاء الفستان'
     store.put('An unknown phrase', 'ترجمة جديدة')
