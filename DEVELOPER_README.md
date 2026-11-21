@@ -25,6 +25,12 @@ Check the current Git state before issuing Git operations; the working checkout 
 
 ## Current verified baseline
 
+### Watch scheduling, 21 November 2026 (0.1.7)
+
+- [x] Preserve model, OCR grouping, Quick Translate, and overlay removal policy. Start offline Watch translation early for new complete lines at default stability. Before display, verify the original OCR row against a fresh capture and relocate it if the exact row scrolled. Ordinary Watch scheduling remains available when verification fails.
+- [x] Preserve the distinct experimental and production modes in `tools/watch_speed_ab.py`. Prototype evidence is recorded in `artifacts/watch-speed/verified-comparison.json`.
+- [ ] Run the release Watch fixture, source regression suite, installer and updater checks.
+
 ### Settings redesign, 20 November 2026 (0.1.5)
 
 - [x] Tone down the settings surfaces and title bar.

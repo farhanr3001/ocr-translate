@@ -241,6 +241,7 @@ def fill_own_overlays(image, bounds, rects):
 
 
 class Engine(QObject):
+    fast_watch = True
     translated = Signal(object)
     removed = Signal(str)
     cleared = Signal()
@@ -447,7 +448,8 @@ class Engine(QObject):
                                 owner = beneath[0]
                         await self._scan_zone(index,bounds,owner,active[2],np,started,
                             preview=preview,core=core,multiple=multiple)
-                interval = min(self.settings.scan_ms, 250)
+                fast_watch = self.fast_watch and self.settings.provider == 'Built-in offline' and self.settings.scan_ms == 500
+                interval = 100 if fast_watch else min(self.settings.scan_ms, 250)
                 await asyncio.sleep(max(.05, interval / 1000 - (time.monotonic() - started)))
         except asyncio.CancelledError:
             raise
@@ -594,7 +596,36 @@ class Engine(QObject):
     def _follow_scene(self, state, image, bounds):
         """Move overlays with scrolling text between OCR reads (no OCR)."""
         scene = state['scene']
-        keys = {key for key in self.anchors.items if key in scene.segments}
+        verified = state.get('verified_rows', {})
+        if verified and not state.get('protected'):
+            from .scene import _gray, crop
+            gray = _gray(image)
+            for identifier, evidence in list(verified.items()):
+                segment = scene.segments.get(identifier)
+                if segment is None or not segment.shown_key:
+                    verified.pop(identifier, None)
+                    continue
+                moved = self._find_watch_row(gray, evidence)
+                if moved is None:
+                    rect, top, pixels = evidence
+                    offset = rect.y - top
+                    glyphs = pixels[offset:offset + rect.h, max(0, rect.x):rect.right]
+                    on_screen = crop(gray, rect)
+                    if on_screen is not None and VisualAnchors.identical(on_screen, glyphs):
+                        continue
+                    # This overlay was published against exact source pixels.
+                    # Leave ordinary OCR reconciliation to recognize any edit.
+                    segment.shown_key = segment.shown_source = ''
+                    verified.pop(identifier, None)
+                    self.anchors.items.pop(identifier, None)
+                    self.removed.emit(identifier)
+                elif moved != evidence[0]:
+                    rect, top, pixels = evidence
+                    verified[identifier] = (moved, top + moved.y - rect.y, pixels)
+                    segment.rect = moved
+                    self.source_moved.emit(identifier, Rect(
+                        bounds.x + moved.x, bounds.y + moved.y, moved.w, moved.h))
+        keys = {key for key in self.anchors.items if key in scene.segments and key not in verified}
         if not keys:
             return
         moved, _lost = self.anchors.update(image, bounds, keys=keys)
@@ -660,6 +691,19 @@ class Engine(QObject):
         blocks = scene.split_by_history(blocks)
         added, updated, moved_ids, removed, replaced = scene.reconcile(
             blocks, areas, image, now, protected=state.get('protected', ()))
+        if self.fast_watch and self.settings.provider == 'Built-in offline' and self.settings.stability_ms == 400:
+            from .scene import _gray, crop
+            rows = state.setdefault('ocr_rows', {})
+            for identifier in set(rows) - scene.segments.keys():
+                rows.pop(identifier)
+            for segment in scene.segments.values():
+                if segment.confirmed != now:
+                    continue
+                rect = segment.rect
+                top = max(0, rect.y - 2)
+                row = _gray(crop(image, Rect(0, top, bounds.w, rect.h + 4)))
+                if row is not None and row.nbytes <= 250_000:
+                    rows[segment.id] = (segment.text, (rect, top, row.copy()))
         for segment_id in removed:
             self._retire_segment(state, segment_id, already_removed=True)
         for segment_id in replaced:
@@ -686,6 +730,16 @@ class Engine(QObject):
                     self.progress.emit({'id': segment_id, 'rect': Rect(bounds.x + segment.rect.x,
                         bounds.y + segment.rect.y, segment.rect.w, segment.rect.h),
                         'percent': 25, 'stage': 'Detected', 'source_window': source_window})
+        # Compute complete, newly recognized lines while Watch confirms their
+        # source. Edited/typewriter segments retain the usual settle policy.
+        if (self.fast_watch and self.settings.provider == 'Built-in offline'
+                and self.settings.stability_ms == 400 and time.monotonic() >= self.backoff):
+            self._schedule_scene(state, bounds, title=self.context_title(hwnd), hwnd=hwnd,
+                                 now=now, early_ids=set(added + replaced))
+
+    def context_title(self, hwnd):
+        active = active_window()
+        return active[2] if active and active[0] == hwnd else ''
 
     def _cancel_segment(self, segment):
         task = self.jobs.pop(segment.id, None)
@@ -702,24 +756,39 @@ class Engine(QObject):
         self.anchors.items.pop(segment_id, None)
         self.removed.emit(segment_id)
 
-    def _schedule_scene(self, state, bounds, title, hwnd, now):
+    def _schedule_scene(self, state, bounds, title, hwnd, now, early_ids=None):
         scene = state['scene']
         base = max(.2, min(.8, self.settings.stability_ms / 1000))
         capacity = max(0, min(12, self.settings.max_regions) - len(self.jobs))
         if not capacity or state.get('image') is None:
             return
         source_window = window_identity(hwnd) if hwnd else None
-        for segment in scene.due(now, base, capacity, image=state['image']):
+        if early_ids is None:
+            ready = scene.due(now, base, capacity, image=state['image'])
+        else:
+            ready = [segment for segment in scene.segments.values()
+                     if segment.id in early_ids and not segment.pending_key and not segment.shown_key
+                     and segment.retry_after <= now and segment.text.endswith(('.', '?', '!'))
+                     and '\n' not in segment.text and len(segment.text.split()) >= 4][:capacity]
+        for segment in ready:
+            reference = state.get('ocr_rows', {}).get(segment.id)
+            evidence = (reference[1] if reference and reference[0] == segment.text
+                        and not state.get('protected') else None)
+            if early_ids is not None and evidence is None:
+                continue
             self._cancel_segment(segment)
             segment.pending_key = segment.key
-            task = asyncio.create_task(self._translate_segment(state, segment, segment.key,
-                segment.block, bounds, title, self.generation, source_window, state['image']))
+            arguments = (state, segment, segment.key, segment.block, bounds, title,
+                         self.generation, source_window, state['image'])
+            coroutine = (self._translate_segment(*arguments, evidence=evidence, early=early_ids is not None) if evidence is not None
+                         else self._translate_segment(*arguments))
+            task = asyncio.create_task(coroutine)
             self.jobs[segment.id] = task
             task.add_done_callback(lambda completed, key=segment.id:
                 self.jobs.pop(key, None) if self.jobs.get(key) is completed else None)
 
     async def _translate_segment(self, state, segment, key, block, bounds, title, generation,
-            source_window, image):
+            source_window, image, evidence=None, early=False):
         from .scene import similarity
         scene = state['scene']
         source = block.text[:6000]
@@ -731,6 +800,8 @@ class Engine(QObject):
                 segment.pending_key = ''
                 return
             arabic, cached = await Engine._translate_progress(self, source, segment.id, physical, source_window)
+            if early:
+                await asyncio.sleep(max(0, .10 - (time.monotonic() - start)))
         except asyncio.CancelledError:
             raise
         except Exception as exc:
@@ -751,6 +822,16 @@ class Engine(QObject):
         if source_window and (not source_window_current(source_window)
                 or self.app_blocks.blocked(source_window[0])):
             return
+        if evidence is not None:
+            if segment.text[:6000] != source:
+                return
+            confirmed = self._confirm_watch_row(state, bounds, evidence)
+            if confirmed is None:
+                return
+            segment.rect, image = confirmed
+            rect, top, pixels = evidence
+            state.setdefault('verified_rows', {})[segment.id] = (
+                segment.rect, top + segment.rect.y - rect.y, pixels)
         if segment.key != key:
             # The words moved on while translating (typing). Show this interim
             # result only when it is closer to what is on screen than what is
@@ -782,12 +863,42 @@ class Engine(QObject):
         segment.shown_key, segment.shown_source = key, source
         self.translated.emit(result)
         if self.settings.overlay.follow_content:
-            current = state.get('image')
+            current = image if evidence is not None else state.get('image')
             if current is not None:
                 self.anchors.add(result, current, segment.rect, float('inf'), capture_bounds=bounds)
         if self.settings.debug:
             self.diagnostics.emit({'text': source, 'normalized': key, 'confidence': 'not provided by Windows OCR',
                 'cached': cached, 'latency_ms': result.latency_ms, 'id': result.id})
+
+    def _confirm_watch_row(self, state, bounds, evidence):
+        """Accept the exact OCR source, including a row that scrolled intact."""
+        from .scene import _gray
+        try:
+            now = time.monotonic()
+            observed, frame = state.get('confirm_frame', (0, None))
+            if frame is None or now - observed > .018:
+                frame, protected = self._masked(self.capture.capture(bounds).copy(), bounds)
+                if protected:
+                    return None
+                state['confirm_frame'] = (now, frame)
+        except OSError:
+            return None
+        moved = Engine._find_watch_row(_gray(frame), evidence)
+        return (moved, frame) if moved is not None else None
+
+    @staticmethod
+    def _find_watch_row(gray, evidence):
+        import cv2
+        import numpy as np
+        rect, top, pixels = evidence
+        height = pixels.shape[0]
+        y = top
+        if not np.array_equal(gray[y:y + height], pixels):
+            scores = cv2.matchTemplate(gray, pixels, cv2.TM_SQDIFF_NORMED)
+            _, _, (_, y), _ = cv2.minMaxLoc(scores)
+            if not np.array_equal(gray[y:y + height], pixels):
+                return None
+        return Rect(rect.x, rect.y + y - top, rect.w, rect.h)
 
     async def _scan_zone(self, index, bounds, hwnd, title, np, started, preview=None, core=None, multiple=None):
         return await self._scan_ocr_zone(index, bounds, hwnd, title, np, started,

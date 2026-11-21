@@ -41,7 +41,7 @@ def watch_engine():
     def build(settings, capture, preview, ocr=None):
         ocr = ocr or StubOcr()
         events = SimpleNamespace(removed=[], moved=[])
-        fake = SimpleNamespace(settings=settings, zone_states={}, preview_capture=preview,
+        fake = SimpleNamespace(settings=settings, fast_watch=False, zone_states={}, preview_capture=preview,
             capture=capture, ocr=ocr, _get_ocr=lambda: ocr, ocr_lock=asyncio.Lock(),
             anchors=VisualAnchors(), jobs={}, backoff=float('inf'), generation=1,
             own_overlays=lambda: (), removed=SimpleNamespace(emit=events.removed.append),

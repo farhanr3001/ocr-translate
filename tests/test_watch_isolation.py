@@ -48,7 +48,7 @@ def fake_ocr_engine(desktop, settings):
     import types
     ocr = StubOcr()
     removed, moved = [], []
-    fake = SimpleNamespace(settings=settings, zone_states={},
+    fake = SimpleNamespace(settings=settings, fast_watch=False, zone_states={},
         preview_capture=CroppedCapture(desktop, True), capture=CroppedCapture(desktop),
         ocr=ocr, _get_ocr=lambda: ocr, ocr_lock=asyncio.Lock(),
         anchors=VisualAnchors(), jobs={}, backoff=float('inf'), generation=1,
