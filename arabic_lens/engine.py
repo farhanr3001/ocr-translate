@@ -540,9 +540,11 @@ class Engine(QObject):
         pending = state.get('pending_dirty', [])
         # During continuous change (typing, scrolling, video) OCR waits for a
         # short quiet period, with a cadence cap so text is never starved.
+        video_cadence = .25 if (core is None and bounds.h <= 240 and bounds.w >= bounds.h * 2) else .7
         read_now = bool(pending) and (first_frame
             or now - state.get('last_change', now) >= .16
-            or now - state.get('last_ocr', now) >= .7)
+            or now - state.get('last_ocr', now) >= video_cadence
+            or (state.get('urgent_ocr') and now - state.get('last_ocr', 0) >= .16))
         if read_now:
             state['audit_at'] = now
             await self._read_scene(state, bounds, core, np, now, hwnd)
@@ -707,6 +709,13 @@ class Engine(QObject):
                     suspects.add(identity)
                     continue
                 self._retire_segment(state, segment.id)
+                # The preview may already have sampled the next subtitle.
+                # Explicitly read this row even if nothing changes again.
+                row = Rect(bounds.x, bounds.y + segment.rect.y - 16,
+                           bounds.w, segment.rect.h + 32).intersect(bounds)
+                state['pending_dirty'] = merge_dirty_rects(state.get('pending_dirty', []) + [row], bounds)
+                state['image'] = frame
+                state['urgent_ocr'] = True
 
     async def _read_scene(self, state, bounds, core, np, now, hwnd=None):
         """OCR the accumulated changed strips of one unit and reconcile."""
@@ -714,6 +723,7 @@ class Engine(QObject):
         scene = state['scene']
         image = state['image']
         dirty = state.pop('pending_dirty', [])
+        urgent = state.pop('urgent_ocr', False)
         state['last_ocr'] = now
         state['last_dirty'] = [Rect(a.x - bounds.x, a.y - bounds.y, a.w, a.h) for a in dirty]
         state['verify_at'] = now + .4
@@ -805,7 +815,8 @@ class Engine(QObject):
         if (self.fast_watch and self.settings.provider == 'Built-in offline'
                 and self.settings.stability_ms == 400 and time.monotonic() >= self.backoff):
             self._schedule_scene(state, bounds, title=self.context_title(hwnd), hwnd=hwnd,
-                                 now=now, early_ids=set(added + replaced + (updated if self.fast_watch_removal else [])))
+                                 now=now, early_ids=set(added + replaced + (updated if self.fast_watch_removal else [])),
+                                 subtitle=urgent or (core is None and bounds.h <= 240 and bounds.w >= bounds.h * 2))
 
     def context_title(self, hwnd):
         active = active_window()
@@ -826,7 +837,7 @@ class Engine(QObject):
         self.anchors.items.pop(segment_id, None)
         self.removed.emit(segment_id)
 
-    def _schedule_scene(self, state, bounds, title, hwnd, now, early_ids=None):
+    def _schedule_scene(self, state, bounds, title, hwnd, now, early_ids=None, subtitle=False):
         scene = state['scene']
         base = max(.2, min(.8, self.settings.stability_ms / 1000))
         capacity = max(0, min(12, self.settings.max_regions) - len(self.jobs))
@@ -842,7 +853,7 @@ class Engine(QObject):
                          and segment.shown_key != segment.key
                          and not segment.shown_key.startswith(segment.key)
                          and not segment.key.startswith(segment.shown_key)))
-                     and segment.retry_after <= now and segment.text.endswith(('.', '?', '!'))
+                     and segment.retry_after <= now and (subtitle or segment.text.endswith(('.', '?', '!')))
                      and '\n' not in segment.text and len(segment.text.split()) >= 4][:capacity]
         for segment in ready:
             reference = state.get('ocr_rows', {}).get(segment.id)
@@ -896,16 +907,31 @@ class Engine(QObject):
         if source_window and (not source_window_current(source_window)
                 or self.app_blocks.blocked(source_window[0])):
             return
+        verified_capture = evidence is not None
         if evidence is not None:
             if segment.text[:6000] != source:
                 return
             confirmed = self._confirm_watch_row(state, bounds, evidence)
             if confirmed is None:
-                return
+                segment.pending_key = key
+                try:
+                    confirmed = await self._confirm_watch_text(state, bounds, segment, source)
+                finally:
+                    if segment.pending_key == key:
+                        segment.pending_key = ''
+                if (confirmed is None or generation != self.generation
+                        or scene.segments.get(segment.id) is not segment or segment.text[:6000] != source
+                        or (source_window and not source_window_current(source_window))):
+                    return
+                # A new background is valid evidence for this OCR result,
+                # but it is no longer the immutable pixel row we started with.
+                state.get('verified_rows', {}).pop(segment.id, None)
+                evidence = None
             segment.rect, image = confirmed
-            rect, top, pixels = evidence
-            state.setdefault('verified_rows', {})[segment.id] = (
-                segment.rect, top + segment.rect.y - rect.y, pixels)
+            if evidence is not None:
+                rect, top, pixels = evidence
+                state.setdefault('verified_rows', {})[segment.id] = (
+                    segment.rect, top + segment.rect.y - rect.y, pixels)
         if segment.key != key:
             # The words moved on while translating (typing). Show this interim
             # result only when it is closer to what is on screen than what is
@@ -937,12 +963,34 @@ class Engine(QObject):
         segment.shown_key, segment.shown_source = key, source
         self.translated.emit(result)
         if self.settings.overlay.follow_content:
-            current = image if evidence is not None else state.get('image')
+            current = image if verified_capture else state.get('image')
             if current is not None:
                 self.anchors.add(result, current, segment.rect, float('inf'), capture_bounds=bounds)
         if self.settings.debug:
             self.diagnostics.emit({'text': source, 'normalized': key, 'confidence': 'not provided by Windows OCR',
                 'cached': cached, 'latency_ms': result.latency_ms, 'id': result.id})
+
+    async def _confirm_watch_text(self, state, bounds, segment, source):
+        """Check the actual words when moving video breaks exact pixel matching."""
+        from .scene import crop
+        from .text import normalize
+        rect = segment.rect
+        padding = 16
+        area = Rect(0, max(0, rect.y - padding), bounds.w, rect.h + padding * 2).intersect(
+            Rect(0, 0, bounds.w, bounds.h))
+        try:
+            async with self.ocr_lock:
+                frame, masked = self._masked(self.capture.capture(bounds).copy(), bounds)
+                if masked or not area.h:
+                    return None
+                blocks = await self._get_ocr().read(crop(frame, area))
+        except (OSError, RuntimeError):
+            return None
+        for block in blocks:
+            observed = Rect(block.rect.x, block.rect.y + area.y, block.rect.w, block.rect.h)
+            if observed.overlap(rect) >= .5 and normalize(block.text) == normalize(source):
+                return observed, frame
+        return None
 
     def _confirm_watch_row(self, state, bounds, evidence):
         """Accept the exact OCR source, including a row that scrolled intact."""

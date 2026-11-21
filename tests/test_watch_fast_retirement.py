@@ -48,6 +48,9 @@ def test_fast_retirement_checks_twice_and_preserves_a_scrolled_line(change, reti
     )
     asyncio.run(Engine._probe_watch_sources(engine))
     assert events == ([segment.id] if retired else [])
+    assert state.get("urgent_ocr", False) is retired
+    if retired:
+        assert state["pending_dirty"][0].intersect(box) == box
 
 
 def test_completed_edit_uses_fast_job_without_dropping_the_shown_translation():

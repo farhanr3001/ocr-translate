@@ -25,6 +25,13 @@ Check the current Git state before issuing Git operations; the working checkout 
 
 ## Current verified baseline
 
+### Consecutive video subtitles (0.1.9)
+
+- [x] Give a retired Watch row an explicit, bounded OCR retry. Use a shorter change cadence for narrow subtitle-shaped selections and permit early verification of unpunctuated text in that path.
+- [x] Verify matching words via localized Windows OCR if exact pixel verification fails on a moving background. Keep the original region and revision checks.
+- [x] Background suite passed 231 tests, with two optional skips. Windows OCR confirmed the same words across three synthetic subtitle changes and rejected the preceding words when the next subtitle appeared. The provided screenshot informed the test; the actual video and its timing remain unverified.
+- [ ] Verify minimized installer and delta, full fallback, and public updater.
+
 ### Watch overlay responsiveness (0.1.8)
 
 - [x] Confirm strong changes to shown Watch text using two samples. Check for scrolling before retirement, keep ordinary OCR confirmation when evidence is ambiguous, and limit the additional capture budget to one eligible Watch zone per tick.
