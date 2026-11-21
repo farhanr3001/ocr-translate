@@ -1,6 +1,6 @@
 # Arabic Lens — developer and AI handoff
 
-Last reviewed: **18 November 2026** (selected-area reliability and packaged screen pipeline; earlier release/desktop baselines retain their recorded dates). This document preserves the product decisions, implementation map, verification workflow and remaining limitations for the next developer or AI assistant. Read it alongside [README.md](README.md). Code and current test results take precedence if this snapshot becomes stale; update this document when behavior changes.
+Last reviewed **21 November 2026**. This document preserves the product decisions, implementation map, verification workflow and remaining limitations for the next developer or AI assistant. Read it alongside [README.md](README.md). Code and current test results take precedence if this snapshot becomes stale.
 
 ## Start here
 
@@ -31,7 +31,8 @@ Check the current Git state before issuing Git operations; the working checkout 
 - [x] Verified fixed preview placement while scrolling, initial placement and color, live style changes, reset and on-disk persistence without Apply. Reviewed offscreen renders in English and Arabic.
 - [x] Verified per-area removal, redraw and confirmation in Watch setup.
 - [x] Moved the initial asynchronous update check to 750 ms. Verified that the toolbox counts as a visible window for update notifications.
-- [ ] Run staged and installed smoke checks, verify both file update packages, deploy and publish, then verify the public updater from 0.1.9.
+- [x] The staged and installed EXEs passed background OCR, offline translation and overlay smoke checks. Silent install and guarded uninstall preserved existing data. The live delta reopened the app once and kept the model file and saved Overlay and toolbox settings. It removed the retired data pack. Verified both package payloads and checksums. The full fallback applies its payload without removing unlisted files from older installations.
+- [x] Replaced the workspace portable folder and published [v0.1.10](https://github.com/farhanr3001/ocr-translate/releases/tag/v0.1.10) from `cb66046`. The 0.1.9 updater found and downloaded the verified 6,099,270-byte delta. The 0.1.10 updater reported current. Evidence is in `artifacts/ui-0110`.
 
 The compact toolbox is the initial view on a normal launch or tray reopen. It exposes the same Watch startup choice as Settings. Pinning persists and keeps the toolbox above other apps while open. Both control windows hide during region capture. The main window still uses native edge/corner hit testing. Overlay controls update the renderer immediately and debounce disk saves; shutdown also saves pending values. Replace preview fits a sample line using the same renderer as actual overlays. Match source appearance uses a neutral dark sample in the preview and the captured region on screen.
 
