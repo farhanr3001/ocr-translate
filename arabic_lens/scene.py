@@ -170,8 +170,7 @@ class TextScene:
         return overlap * .5 + (.6 if same_start else 0) + similarity(segment.key, key) + (.5 if related else 0)
 
     def split_by_history(self, blocks, offset=(0, 0)):
-        """Keep a line the scene already knew as complete separate from new
-        text written beneath it.
+        """Keep known lines separate from newly written text next to them.
 
         One still frame cannot tell a manual newline from a word-wrapped
         continuation when the next line starts in lowercase. History can: if an
@@ -182,13 +181,21 @@ class TextScene:
         result = []
         for block in blocks:
             lines = getattr(block, '_lines', None) or []
+            dx, dy = getattr(block, '_offset', offset)
             cut = None
             if len(lines) >= 2:
                 for segment in self.segments.values():
-                    if segment.rect.overlap(block.rect) < .3 or not segment.seen_below:
+                    if segment.rect.overlap(block.rect) < .3:
                         continue
                     for k in range(1, len(lines)):
-                        if normalize(' '.join(line.text for line in lines[:k])) == segment.key:
+                        if (segment.seen_below
+                                and normalize(' '.join(line.text for line in lines[:k])) == segment.key):
+                            cut = k
+                            break
+                        suffix = lines[k].rect
+                        suffix = Rect(suffix.x + dx, suffix.y + dy, suffix.w, suffix.h)
+                        if (suffix.overlap(segment.rect) >= .75
+                                and normalize(' '.join(line.text for line in lines[k:])) == segment.key):
                             cut = k
                             break
                     if cut:
@@ -200,7 +207,6 @@ class TextScene:
                 rect = part[0].rect
                 for line in part[1:]:
                     rect = rect.union(line.rect)
-                dx, dy = getattr(block, '_offset', offset)
                 rect = Rect(rect.x + dx, rect.y + dy, rect.w, rect.h)
                 piece = TextBlock(' '.join(line.text for line in part), rect, block.confidence,
                     block.standalone, block.container)

@@ -6,7 +6,7 @@ import math
 from dataclasses import replace
 from PySide6.QtCore import QObject, Signal
 from .windows import CaptureService, PreviewCaptureService, active_window, window_identity, source_window_current, window_at_rect
-from .models import Rect, Translation
+from .models import Rect, Translation, neighboring_line_pitch
 from .ocr import WindowsOcrProvider, OcrService
 from .translation import HttpTranslationProvider, TranslationService, TranslationError
 from .text import TextFilterService, belongs_to_region
@@ -142,12 +142,14 @@ def merge_dirty_rects(rects, bounds):
 def contained_text(small_text, small_rect, large_text, large_rect):
     """A padded OCR tile may see just the final line of another tile's paragraph."""
     from .text import normalize
-    small, large = normalize(small_text), normalize(large_text)
     area = small_rect.w * small_rect.h
+    if large_rect.w * large_rect.h <= area * 1.2:
+        return False
     intersection = small_rect.intersect(large_rect)
-    return (bool(small) and small != large and len(large) > len(small) + 3
-        and small in large and intersection.w * intersection.h >= area * .9
-        and large_rect.w * large_rect.h > area * 1.2)
+    if intersection.w * intersection.h < area * .9:
+        return False
+    small, large = normalize(small_text), normalize(large_text)
+    return bool(small) and len(large) > len(small) + 3 and small in large
 
 
 def typical_line_height(segment, segments):
@@ -203,6 +205,55 @@ def reconcile_zone_blocks(engine, state, bounds, blocks):
                     engine._retire_segment(other, segment.id)
             if duplicate: break
         if not duplicate: kept.append(block)
+    return kept
+
+
+def keep_unchanged_watch_lines(scene, blocks, image, np, verified=None):
+    """Ignore repeat reads or fragments of a still-intact neighboring line."""
+    from .scene import _gray, crop
+    from .text import normalize
+    unchanged = {}
+    kept = []
+    preserved = {}
+    verified = verified or {}
+    for block in blocks:
+        key = normalize(block.text).rstrip(',;:')
+        for segment in scene.segments.values():
+            evidence = verified.get(segment.id)
+            reference = evidence[0] if evidence is not None else segment.rect
+            old = segment.key.rstrip(',;:')
+            repeated = (key and segment.shown_key.rstrip(',;:') == key
+                        and block.rect.overlap(reference) >= .25)
+            overlap = block.rect.intersect(reference)
+            fragment = (key and key != old and key in old
+                        and overlap.w * overlap.h >= block.rect.w * block.rect.h * .72
+                        and abs(block.rect.y - reference.y) <= max(3, reference.h * .4))
+            if not (repeated or fragment):
+                continue
+            if segment.id not in unchanged:
+                current = crop(image, segment.rect)
+                unchanged[segment.id] = (current is not None and segment.pixels is not None
+                                         and np.array_equal(_gray(current), segment.pixels))
+                if not unchanged[segment.id] and evidence is not None and segment.shown_key == segment.key:
+                    source, top, pixels = evidence
+                    row = source.y - top
+                    actual = crop(image, source)
+                    unchanged[segment.id] = (actual is not None and np.array_equal(
+                        _gray(actual), pixels[row:row + source.h, source.x:source.right]))
+            if unchanged[segment.id]:
+                old_block = segment.block
+                if old_block.rect != segment.rect:
+                    old_block = replace(old_block, rect=segment.rect)
+                    if hasattr(segment.block, '_last_line'):
+                        old_block._last_line = segment.block._last_line
+                preserved[segment.id] = old_block
+                break
+        else:
+            kept.append(block)
+    for old in preserved.values():
+        if not any(old.rect.overlap(block.rect) >= .5 and normalize(old.text) == normalize(block.text)
+                   for block in kept):
+            kept.append(old)
     return kept
 
 
@@ -500,11 +551,18 @@ class Engine(QObject):
             preview = self.preview_capture.capture(bounds)
         preview, _ = self._masked(preview.copy(), bounds)
         previous_preview = state['preview']
-        changed_pixels = max(8, min(64, preview.shape[0] * preview.shape[1] // 900))
-        changed = previous_preview is None or np.count_nonzero(np.any(
-            np.abs(preview.astype(np.int16) - previous_preview) > 12, axis=2)) >= changed_pixels
         now = time.monotonic()
+        changed_pixels = max(8, min(64, preview.shape[0] * preview.shape[1] // 900))
         first_frame = previous_preview is None
+        changed = first_frame
+        if not first_frame:
+            difference = np.abs(preview.astype(np.int16) - previous_preview)
+            changed = np.count_nonzero(np.any(difference > 12, axis=2)) >= changed_pixels
+            # A few strong pixels can be the final characters after an edit.
+            # Weak noise still needs the ordinary full-preview threshold.
+            if (not changed and now - state.get('last_visual_change', float('-inf')) < .75
+                    and any(segment.line_height <= 12 for segment in scene.segments.values())):
+                changed = np.count_nonzero(np.any(difference > 32, axis=2)) >= 4
         if changed:
             state['preview'] = preview.astype(np.int16)
             state['verify_count'] = 0
@@ -522,6 +580,8 @@ class Engine(QObject):
                 state['pending_dirty'] = merge_dirty_rects(
                     state.get('pending_dirty', []) + dirty, bounds)
                 state['last_change'] = now
+                if not first_frame:
+                    state['last_visual_change'] = now
         elif (not state.get('pending_dirty') and scene.segments
                 and now - state.get('audit_at', now if first_frame else 0) >= 1.5):
             # Light audit: one full-resolution capture checks that every known
@@ -602,6 +662,7 @@ class Engine(QObject):
             state['verify_count'] = state.get('verify_count', 0) + 1
             state['pending_dirty'] = merge_dirty_rects(changed, bounds)
             state['last_change'] = now - 1  # Already quiet: read on this tick.
+            state['last_visual_change'] = now
 
     def _follow_scene(self, state, image, bounds):
         """Move overlays with scrolling text between OCR reads (no OCR)."""
@@ -617,6 +678,10 @@ class Engine(QObject):
                     continue
                 moved = self._find_watch_row(gray, evidence)
                 if moved is None:
+                    latest = crop(gray, segment.rect)
+                    if (segment.shown_key == segment.key and latest is not None and segment.pixels is not None
+                            and VisualAnchors.identical(latest, segment.pixels)):
+                        continue
                     rect, top, pixels = evidence
                     offset = rect.y - top
                     glyphs = pixels[offset:offset + rect.h, max(0, rect.x):rect.right]
@@ -678,7 +743,8 @@ class Engine(QObject):
                 preview = self.preview_capture.capture(bounds).copy()
                 old_preview = previews.get(scene)
                 previews[scene] = preview
-                if old_preview is not None and not previous and np.array_equal(preview, old_preview):
+                baseline = old_preview if old_preview is not None else state.get('preview')
+                if baseline is not None and not previous and np.array_equal(preview, baseline):
                     continue
                 frame, protected = self._masked(self.capture.capture(bounds).copy(), bounds)
             except OSError:
@@ -690,6 +756,11 @@ class Engine(QObject):
                 if not segment.shown_key or segment.shown_key != segment.key or segment.pixels is None:
                     continue
                 current = crop(gray, segment.rect)
+                # An OCR reread can refine the line's bounds after the older
+                # verification sample was recorded. Check the current bounds
+                # against their own pixels before comparing that older sample.
+                if current is not None and VisualAnchors.identical(current, segment.pixels):
+                    continue
                 evidence = state.get('verified_rows', {}).get(segment.id)
                 original = segment.pixels
                 if evidence:
@@ -769,6 +840,7 @@ class Engine(QObject):
             if not any(r.intersect(a).w * r.intersect(a).h >= r.w * r.h * .5 for a in areas)] + seen_lines
         blocks = reconcile_zone_blocks(self, state, bounds, blocks)
         blocks = scene.split_by_history(blocks)
+        blocks = keep_unchanged_watch_lines(scene, blocks, image, np, state.get('verified_rows'))
         added, updated, moved_ids, removed, replaced = scene.reconcile(
             blocks, areas, image, now, protected=state.get('protected', ()))
         if self.fast_watch and self.settings.provider == 'Built-in offline' and self.settings.stability_ms == 400:
@@ -948,6 +1020,7 @@ class Engine(QObject):
         # One font reads 12-16 px tall in OCR boxes depending on its letters;
         # use the typical height of similar lines so sizes match line to line.
         result.line_height = typical_line_height(segment, scene.segments.values())
+        result.line_pitch = neighboring_line_pitch(segment.rect, state.get('ocr_lines', ()))
         if block.container:
             c = block.container
             result.container = Rect(bounds.x + c.x, bounds.y + c.y, c.w, c.h)
@@ -972,6 +1045,7 @@ class Engine(QObject):
 
     async def _confirm_watch_text(self, state, bounds, segment, source):
         """Check the actual words when moving video breaks exact pixel matching."""
+        import numpy as np
         from .scene import crop
         from .text import normalize
         rect = segment.rect
@@ -980,6 +1054,7 @@ class Engine(QObject):
             Rect(0, 0, bounds.w, bounds.h))
         try:
             async with self.ocr_lock:
+                prior = state.get('image')
                 frame, masked = self._masked(self.capture.capture(bounds).copy(), bounds)
                 if masked or not area.h:
                     return None
@@ -990,6 +1065,16 @@ class Engine(QObject):
             observed = Rect(block.rect.x, block.rect.y + area.y, block.rect.w, block.rect.h)
             if observed.overlap(rect) >= .5 and normalize(block.text) == normalize(source):
                 return observed, frame
+        # Finishing a tiny word can change too few pixels in the preview.
+        # A fresh capture has just disproved the scheduled OCR result.
+        if prior is not None and state.get('image') is prior and segment.line_height <= 12:
+            before, after = crop(prior, area), crop(frame, area)
+            if before is not None and after is not None and before.shape == after.shape:
+                changed = np.count_nonzero(np.any(np.abs(after.astype(np.int16) - before.astype(np.int16)) > 24, axis=2))
+                if changed > 4:
+                    row = Rect(bounds.x + area.x, bounds.y + area.y, area.w, area.h)
+                    state['image'] = frame
+                    state['pending_dirty'] = merge_dirty_rects(state.get('pending_dirty', []) + [row], bounds)
         return None
 
     def _confirm_watch_row(self, state, bounds, evidence):
@@ -1055,6 +1140,7 @@ class Engine(QObject):
             image, _ = self._masked(self.capture.capture(rect).copy(), rect)
             async with self.ocr_lock:
                 blocks = await self._get_ocr().read(image, manual=True)
+                ocr_lines = [line.rect for line in getattr(self.ocr, 'last_lines', [])]
                 visible_lines = [Rect(rect.x + l.rect.x - 2, rect.y + l.rect.y - 2, l.rect.w + 4, l.rect.h + 4)
                                  for l in list(getattr(self.ocr, 'last_lines', [])) + list(getattr(self.ocr, 'last_values', []))]
             if not blocks:
@@ -1116,6 +1202,7 @@ class Engine(QObject):
                 from .scene import first_line_height
                 heights = sorted(first_line_height(b) for b in blocks)
                 result.line_height = heights[min(len(heights) - 1, (len(heights) * 3) // 4)]
+                result.line_pitch = neighboring_line_pitch(box, ocr_lines)
                 result.avoid_regions = [r for r in visible_lines if r.overlap(physical) < .1]
                 if self.settings.overlay.match_game:
                     from .appearance import sample_cell_style

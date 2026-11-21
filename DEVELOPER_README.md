@@ -25,6 +25,16 @@ Check the current Git state before issuing Git operations; the working checkout 
 
 ## Current verified baseline
 
+### Closely spaced text and live edits (0.1.11)
+
+- [x] Reproduced the small-text split on the supplied AnyDesk screenshot. Windows OCR now returns both complete lines in the original image and in a tight crop at the same pixel scale.
+- [x] Verify separate rows and intact click-through Replace placement with seven rendered font sizes from 10–32 px. Verify eight appended rows at 12, 20 and 32 px, including wide gaps and clock values.
+- [ ] Verify the randomized 80 WPM sequence at three font sizes, including replacing a middle line without resetting its neighbors.
+- [x] Background suite passed 252 tests with two optional video skips. The desktop-interactive selection fixture was excluded to keep test windows off the desktop.
+- [ ] Verify staged and installed smoke tests, both matched deltas, full fallback, isolated upgrade/restart, and public updater discovery.
+
+A horizontal pixel gradient locates actual narrow text rows for a localized 3×/4× reread when the existing OCR splits a row or misses part of it. Covering overlays use the measured pitch of nearby rows and can refit an existing widget when another row arrives. Watch checks small changes briefly after visible edits and preserves an intact neighboring line even when a subsequent OCR read combines it with a line being typed. Suspect clock digits are accepted only when enlarged reads agree and preserve the other characters.
+
 ### Toolbox and live Overlay settings (0.1.10)
 
 - [x] Verified the native resize messages for all edges and corners, both window modes, shared Watch choices and persisted toolbox pin.

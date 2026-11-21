@@ -53,3 +53,17 @@ class Translation:
     source_window: tuple | None = None
     notice: bool = False
     line_height: int = 0  # Physical height of one source text line (0 = unknown).
+    line_pitch: int = 0  # Physical distance to a nearby row in the same column.
+
+
+def neighboring_line_pitch(source, lines):
+    """Infer the space available to a line from neighboring OCR bounds."""
+    pitches = []
+    for other in lines:
+        distance = abs(source.y - other.y)
+        if not max(1, min(source.h, other.h) * .8) <= distance <= source.h * 1.8:
+            continue
+        common = source.intersect(other)
+        if common.w >= min(source.w, other.w) * .55 and common.h <= min(source.h, other.h) * .15:
+            pitches.append(distance)
+    return min(pitches, default=0)

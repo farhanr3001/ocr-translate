@@ -5,6 +5,30 @@ import numpy as np
 from .models import Rect
 
 
+UNCLEAR_CLOCK = re.compile(r'(?P<prefix>(?:[01]?\d|2[0-3]):[0-5])[A-Za-z](?P<end>[.,!?]?)\Z')
+
+
+async def reread_clock(provider, image, rect, token):
+    """Verify an ambiguous clock digit against its own pixels."""
+    match = UNCLEAR_CLOCK.fullmatch(token)
+    if not match:
+        return token
+    x, y = max(0, rect.x - 2), max(0, rect.y - 5)
+    crop = image[y:rect.bottom + 5, x:rect.right + 2]
+    if not crop.size:
+        return token
+    gray = cv2.cvtColor(crop, cv2.COLOR_BGRA2GRAY if crop.shape[2] == 4 else cv2.COLOR_BGR2GRAY)
+    gray = cv2.normalize(gray, None, 0, 255, cv2.NORM_MINMAX)
+    readings = []
+    for scale in (3, 4):
+        enlarged = cv2.resize(gray, None, fx=scale, fy=scale, interpolation=cv2.INTER_LANCZOS4)
+        text = await provider.recognize_text(cv2.cvtColor(enlarged, cv2.COLOR_GRAY2BGR))
+        readings.append(re.sub(r'\s+', '', text).rstrip('.,!?'))
+    if readings[0] == readings[1] and re.fullmatch(re.escape(match['prefix']) + r'\d', readings[0]):
+        return readings[0] + match['end']
+    return token
+
+
 async def recover_numeric_tails(provider, image, lines):
     for block in lines:
         if block.standalone or not block.text.rstrip().endswith(':'):

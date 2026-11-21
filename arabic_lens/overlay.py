@@ -1,8 +1,9 @@
 import html
+import math
 from PySide6.QtCore import Qt, QRect, QRectF, QPoint, QTimer, QPropertyAnimation, QEasingCurve
 from PySide6.QtGui import QColor, QPainter, QPen, QTextDocument, QFont, QTextOption, QCursor
 from PySide6.QtWidgets import QWidget, QApplication
-from .models import Rect
+from .models import Rect, neighboring_line_pitch
 from .windows import exclude_capture, physical_monitors
 
 
@@ -63,6 +64,8 @@ class ArabicSurface(QWidget):
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.document = QTextDocument()
         self.fitted = False
+        self.compact_line = False
+        self.single_source_row = False
         self.document.setDocumentMargin(0)
         self.refresh()
 
@@ -83,7 +86,7 @@ class ArabicSurface(QWidget):
         self.setFixedSize(round(ideal) + a.padding * 2, round(self.document.size().height()) + a.padding * 2)
         self.update()
 
-    def fit_to_source(self, source, max_extra=0, line_height=0):
+    def fit_to_source(self, source, max_extra=0, line_height=0, line_pitch=0):
         """Keep a readable base size; let Arabic use modest extra width/height.
 
         With `line_height` (one source text line, logical px) the Arabic takes
@@ -98,6 +101,9 @@ class ArabicSurface(QWidget):
             line_font = max(12, min(self.appearance.font_size, round(line_height * 1.0)))
             self.appearance = replace(self.appearance, font_size=line_font)
             if source.h < line_height * 1.6:
+                self.single_source_row = True
+                if line_pitch:
+                    return self._fit_pitched_line(source, max_extra, line_font, line_pitch)
                 return self._fit_single_line(source, max_extra, line_font)
             return self._fit_lines(source, max_extra, line_font, line_height)
         cell = self.appearance.padding <= 2 and self.appearance.border_width == 0
@@ -189,11 +195,40 @@ class ArabicSurface(QWidget):
         self.source_box_height = source.h + self.fit_margin * 2
         self.single_line = True
 
+    def _fit_pitched_line(self, source, max_extra, line_font, line_pitch):
+        """Use the neighboring row's actual pitch for a Replace overlay."""
+        from dataclasses import replace
+        self.fit_margin = 0
+        self.compact_line = self.single_line = True
+        self.appearance = replace(self.appearance, padding=0, background_opacity=100,
+                                  radius=min(self.appearance.radius, 2))
+        font = self.document.defaultFont()
+        font.setPixelSize(min(line_font, max(8, source.h)))
+        self.document.setDefaultFont(font)
+        option = self.document.defaultTextOption()
+        option.setWrapMode(QTextOption.NoWrap)
+        self.document.setDefaultTextOption(option)
+        self.document.setTextWidth(-1)
+        height = max(source.h, line_pitch)
+        widest = source.w + max_extra
+        while font.pixelSize() > 8 and (self.document.size().height() > height
+                                       or self.document.idealWidth() > widest):
+            font.setPixelSize(font.pixelSize() - 1)
+            self.document.setDefaultFont(font)
+        width = max(source.w, min(widest, math.ceil(self.document.idealWidth())))
+        self.document.setTextWidth(max(width, math.ceil(self.document.idealWidth())))
+        self.source_box_height = height
+        self.setFixedSize(width, height)
+
     def limit_right(self, max_width):
         """Keep a fitted overlay within `max_width`, shrinking type if needed
         (never below a readable minimum; it may then wrap to two lines)."""
         max_width = max(24, int(max_width))
         if self.width() <= max_width:
+            return
+        if self.compact_line:
+            self.setFixedWidth(max_width)
+            self.update()
             return
         padding = self.appearance.padding
         if getattr(self, 'single_line', False):
@@ -264,7 +299,14 @@ class ArabicSurface(QWidget):
             p.setFont(QFont('Segoe UI', 10))
             p.drawText(self.rect(), Qt.AlignCenter, 'العربية')
             return
-        p.translate(a.padding, max(a.padding, (self.height() - self.document.size().height()) / 2) if self.fitted else a.padding)
+        if self.compact_line:
+            document = self.document.size()
+            sx = min(1.0, self.width() / max(1.0, document.width()))
+            sy = min(1.0, self.height() / max(1.0, document.height()))
+            p.translate(0, (self.height() - document.height() * sy) / 2)
+            p.scale(sx, sy)
+        else:
+            p.translate(a.padding, max(a.padding, (self.height() - self.document.size().height()) / 2) if self.fitted else a.padding)
         ctx = QAbstractTextDocumentLayout.PaintContext()
         def draw(color, dx=0, dy=0):
             ctx.palette.setColor(QPalette.Text, QColor(color))
@@ -293,6 +335,7 @@ class TranslationOverlay(ArabicSurface):
         self.animation.setEasingCurve(QEasingCurve.InOutQuad)
         self.closing = False
         self.collapsed = False
+        self.zoomed = False
         self.capture_excluded = exclude_capture(self)
 
     def toggle_collapsed(self):
@@ -307,6 +350,7 @@ class TranslationOverlay(ArabicSurface):
     def zoom(self, change):
         if self.collapsed:
             self.toggle_collapsed()
+        self.zoomed = True
         font = self.document.defaultFont()
         font.setPixelSize(max(14, min(72, font.pixelSize() + change)))
         self.document.setDefaultFont(font)
@@ -418,8 +462,10 @@ class OverlayManager:
                 continue
             overlay = self.windows.get(other)
             rect = self.source_rects.get(other)
-            if (overlay and not overlay.closing and rect and source == key
-                    and rect.overlap(result.rect) > .6):
+            both_watch = other.startswith('watch-') and result.id.startswith('watch-')
+            same_text = (source == key or (both_watch and source.rstrip(',;:') == key.rstrip(',;:')))
+            if (overlay and not overlay.closing and rect and same_text
+                    and rect.overlap(result.rect) > (.25 if both_watch else .6)):
                 return other
         return None
 
@@ -482,8 +528,13 @@ class OverlayManager:
                 # Always at least cover the English itself.
                 right_limit = max(right_limit, source.right + 4)
             room = right_limit - source.right if right_limit is not None else 160
-            line = round(result.line_height / max(.5, screen.devicePixelRatio())) if result.line_height else 0
-            overlay.fit_to_source(source, max_extra=max(0, min(160 if line else 80, room - 8)), line_height=line)
+            scale = max(.5, screen.devicePixelRatio())
+            line = round(result.line_height / scale)
+            pitch = math.floor(result.line_pitch / scale)
+            if not pitch and line:
+                pitch = math.floor(neighboring_line_pitch(result.rect, self.source_rects.values()) / scale)
+            overlay.fit_to_source(source, max_extra=max(0, min(160 if line else 80, room - 8)),
+                                  line_height=line, line_pitch=pitch)
             if right_limit is not None:
                 overlay.limit_right(right_limit - (source.x - overlay.fit_margin) - 1)
             # Never grow down over the next line of text or another overlay
@@ -511,6 +562,8 @@ class OverlayManager:
         else:
             rect = place_overlay(source, overlay.width(), overlay.height(), bounds, occupied, a.position)
         overlay.move(rect.x, rect.y)
+        if a.position == 'Replace' and overlay.single_source_row:
+            self.fit_previous_rows(result.rect, overlay.y())
         if len(self.windows) >= self.settings.max_regions:
             self.remove(next(iter(self.windows)))
         self.windows[result.id] = overlay
@@ -524,6 +577,24 @@ class OverlayManager:
         overlay.animation.finished.connect(lambda: self._collect(result.id, overlay))
         overlay.timer.timeout.connect(lambda key=result.id: self._expired(key, overlay))
         self._refresh_visible_rects()
+
+    def fit_previous_rows(self, physical, overlay_top):
+        # Watch can translate a line before the user types the line beneath it.
+        # Fit the existing widget in place when the next row arrives.
+        for key, overlay in self.windows.items():
+            previous = self.source_rects[key]
+            if (previous.y >= physical.y or overlay.appearance.position != 'Replace'
+                    or not overlay.single_source_row or overlay.collapsed or overlay.zoomed
+                    or overlay.closing or not neighboring_line_pitch(previous, (physical,))):
+                continue
+            screen, source = physical_to_logical(previous)
+            if overlay.y() != source.y - overlay.fit_margin or overlay.y() + overlay.height() <= overlay_top:
+                continue
+            room = max(source.h, overlay_top - source.y)
+            extra = max(0, overlay.width() - source.w)
+            overlay._fit_pitched_line(source, extra, overlay.document.defaultFont().pixelSize(), room)
+            bounds = screen.availableGeometry()
+            overlay.move(max(bounds.left(), min(source.x, bounds.right() + 1 - overlay.width())), source.y)
 
     def _expired(self, key, overlay):
         """A timed overlay ended; forget its bookkeeping like a removal."""

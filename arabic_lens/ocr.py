@@ -44,6 +44,9 @@ class WindowsOcrProvider:
                 operation.cancel()
                 raise
             lines = []
+            clock_lines = []
+            from .numeric_ocr import UNCLEAR_CLOCK, recover_numeric_tails, reread_clock
+            from .text import clean_source_text
             # Positions of values left untranslated in the game ("85 / 100"),
             # so overlays can keep clear of them.
             self.last_values = []
@@ -59,10 +62,15 @@ class WindowsOcrProvider:
                 right = max(b.x + b.width for b in boxes)
                 bottom = max(b.y + b.height for b in boxes)
                 converted = Rect(*(round(v / scale) for v in (container.x, container.y, container.w, container.h))) if container else None
-                from .text import clean_source_text
-                lines.append(TextBlock(clean_source_text(' '.join(word.text for word in words)),
+                tokens = [word.text for word in words]
+                block = TextBlock(clean_source_text(' '.join(tokens)),
                     Rect(round(x / scale), round(y / scale), round((right - x) / scale), round((bottom - y) / scale)),
-                    standalone=standalone, container=converted))
+                    standalone=standalone, container=converted)
+                lines.append(block)
+                uncertain = [i for i, word in enumerate(tokens) if i and UNCLEAR_CLOCK.fullmatch(word)
+                             and tokens[i - 1].casefold() in ('at', 'before', 'after', 'until', 'from', 'by')]
+                if uncertain:
+                    clock_lines.append((block, tokens, boxes, uncertain))
 
             for line in result.lines:
                 runs = []
@@ -109,7 +117,12 @@ class WindowsOcrProvider:
                         compact_label = len(words) <= 2 and not any(w.text.casefold() in prose for w in words) and not re.search(r'[.!?]$', words[-1].text)
                         line_height = max(word.bounding_rect.height for word in words)
                         append_words(words, container, standalone=bool(container and container.h < min(70, line_height * 2.2)) or compact_label)
-            from .numeric_ocr import recover_numeric_tails
+            for block, tokens, boxes, uncertain in clock_lines:
+                for index in uncertain:
+                    box = boxes[index]
+                    rect = Rect(*(round(value / scale) for value in (box.x, box.y, box.width, box.height)))
+                    tokens[index] = await reread_clock(self, original_image, rect, tokens[index])
+                block.text = clean_source_text(' '.join(tokens))
             await recover_numeric_tails(self, original_image, lines)
             return lines
         finally:
@@ -140,8 +153,6 @@ class OcrService:
         self.area_width = image.shape[1]
         self.last_lines = await self.provider.recognize(image)
         self.last_values = [TextBlock('', r) for r in getattr(self.provider, 'last_values', [])]
-        blocks = self._group(self.last_lines, manual)
-        accepted = [b for b in blocks if not self.text_filter.reason(b, manual)]
         # Audit changed crops even when the first pass found some text. Finding
         # a paragraph says nothing about whether nearby small labels were read.
         # The engine calls this only for new/changed pixels, never idle frames.
@@ -193,9 +204,12 @@ class OcrService:
                 line.container = None
                 if merge_recognized_line(self.last_lines, line):
                     recovered += 1
+        from .small_text import recover_small_rows
+        small_rows = await recover_small_rows(self.provider, image, self.last_lines, self.last_values)
         blocks = self._group(self.last_lines, manual)
         accepted = [b for b in blocks if not self.text_filter.reason(b, manual)]
         self.last_audit = {'lines': len(self.last_lines), 'accepted': len(accepted),
+            'recovered_small_rows': small_rows,
             'residual_candidates': len(residual), 'recovered_lines': recovered,
             'filtered': [(b.text, self.text_filter.reason(b, manual)) for b in blocks if self.text_filter.reason(b, manual)]}
         return accepted
