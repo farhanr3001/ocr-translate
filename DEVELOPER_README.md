@@ -29,7 +29,9 @@ Check the current Git state before issuing Git operations; the working checkout 
 
 - [x] Preserve model, OCR grouping, Quick Translate, and overlay removal policy. Start offline Watch translation early for new complete lines at default stability. Before display, verify the original OCR row against a fresh capture and relocate it if the exact row scrolled. Ordinary Watch scheduling remains available when verification fails.
 - [x] Preserve the distinct experimental and production modes in `tools/watch_speed_ab.py`. Prototype evidence is recorded in `artifacts/watch-speed/verified-comparison.json`.
-- [ ] Run the release Watch fixture, source regression suite, installer and updater checks.
+- [x] Integrated live fixture passed with panes swapped. Stable subtitle appeared at 204 ms versus 683 ms; all six lines at 307 ms versus 882 ms. Chat passed exact output, coverage, duplicate and position checks. The experimental pane cleared, while the unchanged baseline retained an orphan. See `artifacts/watch-017/live-02/report.json`.
+- [x] Final suite passed 226 tests, with two optional video-fixture skips. Guarded installer and live 0.1.6→0.1.7 delta tests both passed native screen translation, data preservation and single reopen for the delta. The final build replaced `dist/ArabicLens`.
+- [x] Published [v0.1.7](https://github.com/farhanr3001/ocr-translate/releases/tag/v0.1.7), source `c0d99ee`. The production updater found and hash-verified the two-file 6,084,447-byte delta from 0.1.6, and reported 0.1.7 current. Evidence is under `artifacts/watch-017`.
 
 ### Settings redesign, 20 November 2026 (0.1.5)
 
