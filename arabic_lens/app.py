@@ -102,7 +102,7 @@ class Application:
         self.overlays = OverlayManager(self.settings, self.report, self.forget_overlay)
         from .progress import TranslationProgress
         self.progress = TranslationProgress(self.settings, self.l)
-        self.engine.progress.connect(self.progress.update)
+        self.engine.progress.connect(self.show_progress)
         self.engine.removed.connect(self.progress.remove)
         self.engine.source_lost.connect(self.progress.remove)
         self.engine.source_moved.connect(self.progress.move)
@@ -145,6 +145,7 @@ class Application:
         self.paused_watch = False
         self.paused = False
         self.capture_request = 0
+        self.manual_hidden = False
         self.update_service = UpdateService(UPDATE_REPOSITORY, APP_VERSION)
         self.update_events = UpdateEvents(self)
         self.update_check_job = None
@@ -182,9 +183,8 @@ class Application:
         watch.setCheckable(True)
         watch.setChecked(self.engine.watch)
         watch.triggered.connect(lambda: self.action("watch"))
-        for title, key in (("Quick Translate", "quick"), ("Translate Last Region", "repeat")):
-            action = menu.addAction(self.l.t(title) + "\t" + self.settings.shortcuts[key])
-            action.triggered.connect(lambda checked=False, k=key: self.action(k))
+        quick = menu.addAction(self.l.t("Quick Translate") + "\t" + self.settings.shortcuts['quick'])
+        quick.triggered.connect(lambda: self.action('quick'))
         add_zone = menu.addAction(self.l.t("Add Watch Area") + "\t" + self.settings.shortcuts.get('add_zone', 'Alt+Shift+W'))
         add_zone.triggered.connect(lambda: self.action('add_zone'))
         pause = menu.addAction(self.l.t("Resume Translation" if self.paused else "Pause Translation"))
@@ -418,20 +418,19 @@ class Application:
                 self.capture_request += 1
                 return
             self.capture_request += 1
+            if any(key.startswith('manual') for key in self.overlays.windows):
+                self.manual_hidden = True
+                self.engine.cancel_manual()
+                for key in ('manual', 'manual-notice'):
+                    self.overlays.remove_group(key, immediate=True)
+                    self.progress.remove(key)
+                    self.source_monitor.forget(key)
+                return
             self.selection_purpose = 'quick'
             self.selection_context = active_window()
             self.selection_window = window_identity(self.selection_context[0]) if self.selection_context else None
-            if self.engine.watch:
-                # Manual capture does not invalidate unchanged Watch zones.
-                for key in list(self.overlays.windows):
-                    if key == 'manual' or key.startswith('manual:') or key == 'manual-notice':
-                        self.overlays.remove(key, immediate=True)
-                self.source_monitor.forget('manual')
-                self.source_monitor.forget('manual-notice')
-            else:
-                self.engine.hide()
-                self.overlays.clear(immediate=True)
-                self.source_monitor.clear()
+            self.manual_hidden = True
+            self.engine.cancel_manual()
             self.hide_controls()
             self.selector.begin()
         elif action == 'select_watch_area' and not self.paused:
@@ -450,11 +449,6 @@ class Application:
             self.window.rebuild(3)
             if self.engine.watch:
                 self.engine.set_watch(True)
-        elif action == "repeat" and not self.paused:
-            if self.settings.last_region:
-                self.recapture(Rect(*self.settings.last_region))
-            else:
-                self.report("Select a region with Quick Translate first.")
         elif action == "hide":
             self.capture_request += 1
             self.selector.cancel()
@@ -721,6 +715,7 @@ class Application:
             if not actual_title:
                 active = active_window()
                 actual_title = active[2] if active else ''
+            self.manual_hidden = False
             self.engine.translate_region(rect, actual_title, actual_source)
         QTimer.singleShot(120, capture)
 
@@ -740,6 +735,8 @@ class Application:
         self.overlays.remove_group(key, immediate=key.startswith('watch-') and self.engine.fast_watch_removal)
 
     def show_translation(self, result):
+        if result.id.startswith('manual') and self.manual_hidden:
+            return
         if result.id.startswith('watch-') and result.source_window and self.engine.app_blocks.blocked(result.source_window[0]):
             return
         if self.source_monitor.accept(result):
@@ -760,6 +757,8 @@ class Application:
             self.manual_failed('selection_changed', result.rect, None)
 
     def manual_failed(self, code, rect, source):
+        if self.manual_hidden:
+            return
         # A missing/closed source must not suppress the explanation of failure.
         # Notices are temporary; source-driven lifetime still applies to translations.
         message = self.l.status(code)
@@ -769,6 +768,10 @@ class Application:
         if self.visible_controls() is None and self.tray.isVisible():
             self.tray.showMessage(self.l.t('Screen translation unavailable'), message,
                                   QSystemTrayIcon.Warning, 7000)
+
+    def show_progress(self, info):
+        if not (info['id'].startswith('manual') and self.manual_hidden):
+            self.progress.update(info)
 
     def forget_overlay(self, key):
         self.progress.remove(key)

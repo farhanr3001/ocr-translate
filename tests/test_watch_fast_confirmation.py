@@ -3,8 +3,31 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from arabic_lens.engine import Engine
+from arabic_lens.engine import Engine, same_bright_strokes
 from arabic_lens.models import Rect, TextBlock
+
+
+def test_pale_tooltip_strokes_survive_background_motion_but_not_replacement():
+    reference = np.full((12, 70), 38, dtype=np.uint8)
+    changed = np.full_like(reference, 81)
+    reference[2:10, 4:65:5] = changed[2:10, 4:65:5] = 240
+    assert same_bright_strokes(reference, changed)
+    changed[2:10, 49:65] = 81
+    changed[2:10, 50:65:5] = 240
+    assert not same_bright_strokes(reference, changed)
+    assert not same_bright_strokes(reference, np.full_like(reference, 65))
+
+
+def test_compound_label_can_start_early_on_a_bounded_card():
+    rect = Rect(30, 24, 90, 16)
+    text = 'Iron Pickaxe'
+    segment = SimpleNamespace(text=text, rect=rect, block=TextBlock(text, rect, standalone=True))
+    frame = np.full((80, 160, 3), 38, dtype=np.uint8)
+    frame[26:38, 32:118:4] = 235
+    assert not Engine._early_watch_text(segment, frame, False, .4)
+    frame[:17] = 120
+    frame[47:] = 120
+    assert Engine._early_watch_text(segment, frame, False, .4)
 
 
 def test_fast_watch_accepts_an_intact_scrolled_row_and_rejects_a_replacement():
@@ -27,8 +50,8 @@ def test_fresh_ocr_accepts_matching_subtitle_words_and_rejects_another_line():
     bounds = Rect(10, 20, 400, 90)
     frame = np.zeros((bounds.h, bounds.w, 4), dtype=np.uint8)
     box = Rect(50, 30, 240, 20)
-    segment = SimpleNamespace(rect=box)
     words = "I had Claude measure a cartoon channel"
+    segment = SimpleNamespace(rect=box, block=TextBlock(words, box))
     observed = [TextBlock(words, Rect(50, 16, 240, 20))]
 
     async def read(image):
@@ -76,9 +99,10 @@ def test_windows_ocr_checks_consecutive_subtitles_on_changing_frames():
             pixels = cv2.cvtColor(initial, cv2.COLOR_BGRA2GRAY)
             assert Engine._find_watch_row(cv2.cvtColor(frame, cv2.COLOR_BGRA2GRAY),
                                           (block.rect, 0, pixels)) is None
-            assert await Engine._confirm_watch_text(engine, {}, bounds, block, words) is not None
+            segment = SimpleNamespace(rect=block.rect, block=block)
+            assert await Engine._confirm_watch_text(engine, {}, bounds, segment, words) is not None
             if index + 1 < len(captions):
                 frame = subtitle(captions[index + 1], 64)
-                assert await Engine._confirm_watch_text(engine, {}, bounds, block, words) is None
+                assert await Engine._confirm_watch_text(engine, {}, bounds, segment, words) is None
 
     asyncio.run(check())

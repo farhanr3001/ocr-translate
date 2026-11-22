@@ -66,15 +66,25 @@ def test_quick_capture_while_watching_keeps_unchanged_watch_overlays(monkeypatch
     app.capture_request = 0
     events = []
     app.selector = SimpleNamespace(windows=[], begin=lambda: events.append('selector'))
-    app.engine = SimpleNamespace(watch=True, hide=lambda: events.append('clear-watch'))
-    app.overlays = SimpleNamespace(windows={'watch-0-1': object(), 'manual': object()},
-        remove=lambda key, immediate=False: events.append(f'remove:{key}'),
+    app.engine = SimpleNamespace(watch=True, hide=lambda: events.append('clear-watch'),
+        cancel_manual=lambda: events.append('cancel-manual'))
+    windows = {'watch-0-1': object(), 'manual': object(), 'manual:1': object()}
+    def remove_group(key, immediate=False):
+        assert immediate
+        for item in list(windows):
+            if item == key or item.startswith(key + ':'):
+                del windows[item]
+                events.append(f'remove:{item}')
+    app.overlays = SimpleNamespace(windows=windows, remove_group=remove_group,
         clear=lambda immediate=False: events.append('clear-all'))
     app.source_monitor = SimpleNamespace(forget=lambda key: events.append(f'forget:{key}'),
         clear=lambda: events.append('clear-sources'))
+    app.progress = SimpleNamespace(remove=lambda key: None)
     app.window = SimpleNamespace(hide=lambda: events.append('hide-settings'))
     Application.action(app, 'quick')
-    assert 'selector' in events and 'remove:manual' in events
+    assert 'selector' not in events and 'remove:manual' in events and 'remove:manual:1' in events
+    Application.action(app, 'quick')
+    assert 'selector' in events and list(windows) == ['watch-0-1']
     assert 'clear-watch' not in events and 'clear-all' not in events
     assert 'remove:watch-0-1' not in events
 

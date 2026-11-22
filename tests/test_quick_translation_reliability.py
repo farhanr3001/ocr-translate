@@ -87,6 +87,11 @@ def test_quick_capture_real_ocr_translation_repeat_cancel_failure_and_recovery(m
             assert overlay.isVisible() and not overlay.closing
             assert results[-1].arabic and results[-1].source_window == identity
             if index not in (0, 6): assert results[-1].cached
+            app.action('quick')
+            assert not app.selector.windows and 'manual' not in app.overlays.windows
+            # A result queued just before the dismissal cannot put it back.
+            app.show_translation(results[-1])
+            assert 'manual' not in app.overlays.windows
         assert len(focus_calls) >= 14 and not failures
         count = len(results)
         app.action('quick')
@@ -159,7 +164,7 @@ def test_manual_failure_is_not_hidden_by_invalid_source(monkeypatch):
     from arabic_lens.config import Settings
     from arabic_lens.localization import LocalizationService
     notices, messages, balloons = [], [], []
-    fake = SimpleNamespace(l=LocalizationService(Settings()), report=messages.append,
+    fake = SimpleNamespace(l=LocalizationService(Settings()), report=messages.append, manual_hidden=False,
         show_translation=notices.append, visible_controls=lambda: None,
         tray=SimpleNamespace(isVisible=lambda: True, showMessage=lambda *args: balloons.append(args)))
     Application.manual_failed(fake, 'ocr_language', Rect(10, 20, 400, 100), (123, 1, Rect(0,0,100,100)))

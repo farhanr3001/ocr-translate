@@ -121,6 +121,21 @@ def same_words(source, blocks):
     return False
 
 
+def same_bright_strokes(reference, current):
+    """Match pale glyphs on dark backing without matching its changing scenery."""
+    import numpy as np
+    if reference is None or current is None or reference.shape != current.shape or not reference.size:
+        return False
+    old = reference >= 172
+    new = current >= 172
+    union = np.count_nonzero(old | new)
+    if not 16 <= union <= reference.size * .60:
+        return False
+    if np.median(reference) > 100 or np.median(current) > 100:
+        return False
+    return np.count_nonzero(old & new) >= union * .90
+
+
 def merge_dirty_rects(rects, bounds):
     merged = []
     for area in rects:
@@ -506,7 +521,12 @@ class Engine(QObject):
                     tiled = any(zone.w >= 1200 and zone.h >= 650 for zone in zones)
                     for bounds in zones:
                         if bounds.w >= 1200 and bounds.h >= 650 or not configured:
-                            overview = self.preview_capture.capture(bounds).copy()
+                            try:
+                                overview = self.preview_capture.capture(bounds).copy()
+                            except OSError:
+                                # A mode switch can briefly invalidate desktop capture.
+                                index += sum(1 for _ in whole_screen_tiles(bounds, (180, 320)))
+                                continue
                             for core, padded, (x0,y0,x1,y1) in whole_screen_tiles(bounds,overview.shape):
                                 scan_plan.append((index,padded,overview[y0:y1,x0:x1],core,True))
                                 index += 1
@@ -517,7 +537,10 @@ class Engine(QObject):
                     # near the top-left cannot monopolize every translation slot.
                     cursor = getattr(self,'scan_cursor',0) % max(1,len(scan_plan))
                     self.scan_cursor = cursor + 1
-                    for index,bounds,preview,core,multiple in scan_plan[cursor:] + scan_plan[:cursor]:
+                    scan_plan = scan_plan[cursor:] + scan_plan[:cursor]
+                    if self.fast_watch and self.settings.provider == 'Built-in offline':
+                        scan_plan.sort(key=lambda entry: Engine._watch_scan_priority(self.zone_states, entry, np))
+                    for index,bounds,preview,core,multiple in scan_plan:
                         if not self.watch or frame_generation != self.generation:
                             break
                         owner = active[0]
@@ -527,8 +550,15 @@ class Engine(QObject):
                             beneath = window_at_rect(bounds)
                             if beneath:
                                 owner = beneath[0]
-                        await self._scan_zone(index,bounds,owner,active[2],np,started,
-                            preview=preview,core=core,multiple=multiple)
+                        try:
+                            await self._scan_zone(index,bounds,owner,active[2],np,started,
+                                preview=preview,core=core,multiple=multiple)
+                        except OSError:
+                            # Retry this unit next tick. Keep Watch and the other
+                            # units running through a temporary capture failure.
+                            state = self.zone_states.get(index)
+                            if state is not None:
+                                state['preview'] = None
                 fast_watch = self.fast_watch and self.settings.provider == 'Built-in offline' and self.settings.scan_ms == 500
                 interval = 100 if fast_watch else min(self.settings.scan_ms, 250)
                 await asyncio.sleep(max(.05, interval / 1000 - (time.monotonic() - started)))
@@ -541,6 +571,19 @@ class Engine(QObject):
             self._cancel_jobs()
             self.watch_cleared.emit()
             self.watch_changed.emit(False)
+
+    @staticmethod
+    def _watch_scan_priority(states, entry, np):
+        index, _bounds, preview, _core, _multiple = entry
+        state = states.get(index, {})
+        prior = state.get('preview')
+        if state.get('urgent_ocr'):
+            return 0
+        if prior is not None and preview is not None:
+            pixels = np.count_nonzero(np.any(np.abs(preview.astype(np.int16) - prior) > 12, axis=2))
+            if 8 <= pixels <= preview.shape[0] * preview.shape[1] * .18:
+                return 1
+        return 2
 
     def _masked(self, image, bounds):
         """Hide our own capture-visible overlays from a capture (rare fallback)."""
@@ -574,22 +617,26 @@ class Engine(QObject):
         preview, _ = self._masked(preview.copy(), bounds)
         previous_preview = state['preview']
         now = time.monotonic()
+        fast_tile = core is not None and self.fast_watch and self.settings.provider == 'Built-in offline'
         changed_pixels = max(8, min(64, preview.shape[0] * preview.shape[1] // 900))
         first_frame = previous_preview is None
+        local_change = False
         changed = first_frame
         if not first_frame:
             difference = np.abs(preview.astype(np.int16) - previous_preview)
-            changed = np.count_nonzero(np.any(difference > 12, axis=2)) >= changed_pixels
+            pixels = np.count_nonzero(np.any(difference > 12, axis=2))
+            changed = pixels >= changed_pixels
+            local_change = changed and pixels <= preview.shape[0] * preview.shape[1] * .18
             # A few strong pixels can be the final characters after an edit.
             # Weak noise still needs the ordinary full-preview threshold.
             if (not changed and now - state.get('last_visual_change', float('-inf')) < .75
                     and any(segment.line_height <= 12 for segment in scene.segments.values())):
                 changed = np.count_nonzero(np.any(difference > 32, axis=2)) >= 4
         if changed:
-            state['preview'] = preview.astype(np.int16)
-            state['verify_count'] = 0
             image = self.capture.capture(bounds).copy()
             image, state['protected'] = self._masked(image, bounds)
+            state['preview'] = preview.astype(np.int16)
+            state['verify_count'] = 0
             state['image'] = image
             if self.settings.overlay.follow_content:
                 self._follow_scene(state, image, bounds)
@@ -622,13 +669,19 @@ class Engine(QObject):
         pending = state.get('pending_dirty', [])
         # During continuous change (typing, scrolling, video) OCR waits for a
         # short quiet period, with a cadence cap so text is never starved.
-        video_cadence = .25 if (core is None and bounds.h <= 240 and bounds.w >= bounds.h * 2) else .7
+        video_cadence = .25 if (fast_tile or (core is None and bounds.h <= 240 and bounds.w >= bounds.h * 2)) else .7
         read_now = bool(pending) and (first_frame
+            or (fast_tile and local_change and now - state.get('last_ocr', now) >= .12)
             or now - state.get('last_change', now) >= .16
             or now - state.get('last_ocr', now) >= video_cadence
             or (state.get('urgent_ocr') and now - state.get('last_ocr', 0) >= .16))
         if read_now:
             state['audit_at'] = now
+            state['fast_ocr'] = fast_tile and changed
+            await self._read_scene(state, bounds, core, np, now, hwnd)
+        elif fast_tile and not changed and not pending and state.get('refine_dirty') and now - state.get('last_change', now) >= .22:
+            state['pending_dirty'] = state.pop('refine_dirty')
+            state['fast_ocr'] = False
             await self._read_scene(state, bounds, core, np, now, hwnd)
         if now >= self.backoff:
             self._schedule_scene(state, bounds, title, hwnd, now)
@@ -783,6 +836,8 @@ class Engine(QObject):
                 # against their own pixels before comparing that older sample.
                 if current is not None and VisualAnchors.identical(current, segment.pixels):
                     continue
+                if segment.block.standalone and same_bright_strokes(segment.pixels, current):
+                    continue
                 evidence = state.get('verified_rows', {}).get(segment.id)
                 original = segment.pixels
                 if evidence:
@@ -816,6 +871,11 @@ class Engine(QObject):
         scene = state['scene']
         image = state['image']
         dirty = state.pop('pending_dirty', [])
+        fast = state.pop('fast_ocr', False)
+        if fast:
+            state['refine_dirty'] = merge_dirty_rects(state.get('refine_dirty', []) + dirty, bounds)
+        else:
+            dirty = merge_dirty_rects(dirty + state.pop('refine_dirty', []), bounds)
         urgent = state.pop('urgent_ocr', False)
         state['last_ocr'] = now
         state['last_dirty'] = [Rect(a.x - bounds.x, a.y - bounds.y, a.w, a.h) for a in dirty]
@@ -834,7 +894,8 @@ class Engine(QObject):
             if int(np.max(crop_image[:, :, :3])) - int(np.min(crop_image[:, :, :3])) < 12:
                 continue
             async with self.ocr_lock:
-                recognized = await self._get_ocr().read(crop_image)
+                ocr = self._get_ocr()
+                recognized = await (ocr.read(crop_image, audit=False) if fast else ocr.read(crop_image))
                 # Every OCR'd item, including values deliberately left
                 # untranslated ("85 / 100"), so overlays never cover them.
                 seen_lines += [Rect(ox + l.rect.x, oy + l.rect.y, l.rect.w, l.rect.h)
@@ -947,8 +1008,8 @@ class Engine(QObject):
                          and segment.shown_key != segment.key
                          and not segment.shown_key.startswith(segment.key)
                          and not segment.key.startswith(segment.shown_key)))
-                     and segment.retry_after <= now and (subtitle or segment.text.endswith(('.', '?', '!')))
-                     and '\n' not in segment.text and len(segment.text.split()) >= 4][:capacity]
+                     and segment.retry_after <= now and '\n' not in segment.text
+                     and Engine._early_watch_text(segment, state['image'], subtitle, base)][:capacity]
         for segment in ready:
             reference = state.get('ocr_rows', {}).get(segment.id)
             evidence = (reference[1] if reference and reference[0] == segment.text
@@ -965,6 +1026,22 @@ class Engine(QObject):
             self.jobs[segment.id] = task
             task.add_done_callback(lambda completed, key=segment.id:
                 self.jobs.pop(key, None) if self.jobs.get(key) is completed else None)
+
+    @staticmethod
+    def _early_watch_text(segment, image, subtitle, base):
+        import re
+        from .compact_text import has_dark_backing
+        from .scene import settle_delay
+
+        text = segment.text
+        if (subtitle or text.endswith(('.', '?', '!'))) and len(text.split()) >= 4:
+            return True
+        if segment.block.standalone and settle_delay(text, base) <= max(.5, base):
+            return True
+        # Names and compounds can be valid tooltips even if the dictionary
+        # would classify their last word as unfinished typing.
+        return bool(re.fullmatch(r"[A-Za-z]{2,}(?:[ '-][A-Za-z]{2,}){0,4}[.!?]?", text)
+                    and has_dark_backing(image, segment.rect))
 
     async def _translate_segment(self, state, segment, key, block, bounds, title, generation,
             source_window, image, evidence=None, early=False):
@@ -1006,6 +1083,16 @@ class Engine(QObject):
             if segment.text[:6000] != source:
                 return
             confirmed = self._confirm_watch_row(state, bounds, evidence)
+            if confirmed is None and block.standalone:
+                from .scene import _gray, crop
+                frame = state.get('confirm_frame', (0, None))[1]
+                if frame is not None:
+                    rect, top, pixels = evidence
+                    start_y = rect.y - top
+                    original = pixels[start_y:start_y + rect.h, rect.x:rect.right]
+                    if same_bright_strokes(original, crop(_gray(frame), rect)):
+                        confirmed = (rect, frame)
+                        evidence = None  # No exact row to use for scroll following.
             if confirmed is None:
                 segment.pending_key = key
                 try:
@@ -1072,8 +1159,11 @@ class Engine(QObject):
         from .text import normalize
         rect = segment.rect
         padding = 16
-        area = Rect(0, max(0, rect.y - padding), bounds.w, rect.h + padding * 2).intersect(
-            Rect(0, 0, bounds.w, bounds.h))
+        if segment.block.standalone:
+            area = Rect(rect.x - padding, rect.y - padding, rect.w + padding * 2, rect.h + padding * 2)
+        else:
+            area = Rect(0, rect.y - padding, bounds.w, rect.h + padding * 2)
+        area = area.intersect(Rect(0, 0, bounds.w, bounds.h))
         try:
             async with self.ocr_lock:
                 prior = state.get('image')
@@ -1084,7 +1174,7 @@ class Engine(QObject):
         except (OSError, RuntimeError):
             return None
         for block in blocks:
-            observed = Rect(block.rect.x, block.rect.y + area.y, block.rect.w, block.rect.h)
+            observed = Rect(block.rect.x + area.x, block.rect.y + area.y, block.rect.w, block.rect.h)
             if observed.overlap(rect) >= .5 and normalize(block.text) == normalize(source):
                 return observed, frame
         # Finishing a tiny word can change too few pixels in the preview.
@@ -1122,6 +1212,12 @@ class Engine(QObject):
         rect, top, pixels = evidence
         height = pixels.shape[0]
         y = top
+        # Adjacent pixels can be animated while the letters stay exactly put.
+        offset = rect.y - top
+        glyphs = pixels[offset:offset + rect.h, rect.x:rect.right]
+        live_glyphs = gray[rect.y:rect.bottom, rect.x:rect.right]
+        if glyphs.size and np.array_equal(live_glyphs, glyphs):
+            return rect
         if not np.array_equal(gray[y:y + height], pixels):
             scores = cv2.matchTemplate(gray, pixels, cv2.TM_SQDIFF_NORMED)
             _, _, (_, y), _ = cv2.minMaxLoc(scores)
@@ -1136,8 +1232,15 @@ class Engine(QObject):
     def translate_region(self, rect, title="", source_window=None):
         self._submit(self._manual_start(rect, title, source_window))
 
+    def cancel_manual(self):
+        self._submit(self._cancel_manual())
+
     async def _manual_start(self, rect, title, source_window=None):
         self.removed.emit('manual')
+        await Engine._cancel_manual(self)
+        self.manual = asyncio.create_task(self._manual_translate(rect, title, source_window))
+
+    async def _cancel_manual(self):
         for key in list(self.anchors.items):
             if key.startswith('manual'):
                 self.anchors.items.pop(key, None)
@@ -1151,7 +1254,6 @@ class Engine(QObject):
         if self.manual:
             self.manual.cancel()
             await asyncio.gather(self.manual, return_exceptions=True)
-        self.manual = asyncio.create_task(self._manual_translate(rect, title, source_window))
 
     async def _manual_translate(self, rect, title, source_window=None):
         try:

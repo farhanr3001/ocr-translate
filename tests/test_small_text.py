@@ -83,7 +83,7 @@ def test_watch_rechecks_a_small_line_when_verification_finds_more_text():
             _masked=lambda image, _: (image, ()),
             _get_ocr=lambda: SimpleNamespace(read=read))
         state = {'image': before}
-        segment = SimpleNamespace(rect=source, line_height=9)
+        segment = SimpleNamespace(rect=source, line_height=9, block=TextBlock('The train leaves at', source))
         assert await Engine._confirm_watch_text(instance, state, bounds, segment, 'The train leaves at') is None
         assert state['pending_dirty'] == [Rect(40, 22, 300, 41)]
         assert np.array_equal(state['image'], after)

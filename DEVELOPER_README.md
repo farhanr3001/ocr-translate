@@ -25,6 +25,18 @@ Check the current Git state before issuing Git operations; the working checkout 
 
 ## Current verified baseline
 
+### Watch tooltips and Quick Translate dismissal (0.1.13)
+
+Fullscreen Watch gives newly changed small regions priority over broad motion. Moving tiles use an initial OCR pass with targeted recovery for bright labels on dark cards. The detailed OCR audit runs after the tile settles. The normal stability policy remains for edited text and general paragraphs. Short labels on visually bounded backings can start offline translation early, including compounds absent from the English dictionary. Before placing the result, Watch verifies the source pixels, checks pale glyphs against dark animated backings where applicable, or rereads a small region. Each tile keeps its own scene and dirty rectangles. A transient capture error is retried on a later Watch tick.
+
+Alt+Q opens a selection or dismisses a visible Quick Translate group, including late results from the same request. It leaves Watch running. Translate Again and its shortcut were retired from Home, the toolbox, the tray and Shortcuts. Named saved regions still use manual capture. The small-row audit can reread a fractured 13–14 px row to recover bold text lost by the first recognition pass.
+
+Verification used the user's 77.7-second Minecraft recording at its original screen resolution, the reported bold-text screenshot, and regression tests for Watch isolation, source retirement and manual capture. The recording was replayed into the production pipeline with offscreen Qt widgets. It supplies real game pixels and hover/scroll timing. Capture failure recovery has a separate regression test. Private recordings and per-label trace files remain under `artifacts/minecraft-0113` and are excluded from publication.
+
+For 19 manually reviewed menu and tooltip cues, final Watch showed an Arabic overlay from the correctly recognized label in time for 11, versus zero in the clean 0.1.12 replay and one in the first baseline run. The 11 matched results had a 542 ms median display delay and a 417 ms maximum delay to retirement after the reviewed cue ended. The runs decoded all 4,661 frames after the initial frame and used 142 CPU-seconds each including replay overhead. Both versions stayed enabled in replay. Several short labels and stylized menu entries still failed recognition. A separate PaddleOCR sample read some of the pixel-font labels better but took 375–1,154 ms per sampled full frame, before translation. The release keeps Windows OCR.
+
+The background suite passed 255 tests with two optional replay skips and the desktop-interactive fixture excluded. The staged and isolated installed executable passed the packaged OCR and overlay smoke tests. File updates from 0.1.12 and 0.1.5 reopened the application once and preserved settings and the model. The full fallback matched the staged payload.
+
 ### Startup readiness (0.1.12)
 
 `Application` schedules `Engine.prepare` after setting up the UI, including on minimized startup. It runs a synthetic image through the existing Windows OCR provider under the normal OCR lock, and one synthetic sentence directly through the built-in provider's existing worker. No desktop capture, user cache, history, results, or external provider is involved. Quick Translate and Watch reuse the same initialized instances. Normal requests still create the engines if needed, and switching back to the built-in provider prepares it when it has not been used. The app has no preparation timer or scan loop when its tools are idle.
@@ -212,8 +224,7 @@ The executable and portable ZIP were replaced after those checks. Artifacts can 
 
 | Feature | Behavior |
 | --- | --- |
-| Quick Translate, **Alt+Q** | Dim the monitor, drag a rectangle, release to submit; Esc cancels. No confirmation click. Source tracking keeps the result until its source is gone. |
-| Repeat Region, **Alt+E** | Recapture the last Quick rectangle. Named pinned regions are also supported. |
+| Quick Translate, **Alt+Q** | Select and release to translate. Esc cancels. The next press dismisses a visible Quick result and a further press starts a new selection. |
 | Watch, **Alt+W** | Start according to the selected startup option, or turn Watch off. |
 | Add Watch area, **Alt+Shift+W** | Add a selected area to the active Watch workflow. |
 | Hide, **Alt+H** | Hide current translations and invalidate pending results. |
@@ -435,7 +446,7 @@ Required scenarios for future changes:
 4. Click without visual/source change, including through a visible overlay: no reprocessing or disappearance.
 5. Scroll source out, close/minimize/move its window, or replace text during a slow translation: stale overlay/results must not return.
 6. Run equivalent setups through Create New and saved Preset; they must share behavior.
-7. Repeated Alt+Q and Alt+E, including while Watch is running: selection invokes and resulting translations persist appropriately.
+7. Repeated Alt+Q, including while Watch is running: the first press selects text, the next dismisses the Quick result, and another press starts a new selection. Watch overlays stay visible.
 8. Hold/release Ctrl+Alt around mouse presses: only explicit overlay interaction is intercepted.
 
 ### Other fixture and performance tools

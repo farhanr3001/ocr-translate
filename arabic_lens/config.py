@@ -84,7 +84,7 @@ class Settings:
     ignored_translations: dict = field(default_factory=dict)
     ignored: list = field(default_factory=lambda: DEFAULT_IGNORE.copy())
     blocked_apps: list = field(default_factory=list)
-    shortcuts: dict = field(default_factory=lambda: {"quick": "Alt+Q", "repeat": "Alt+E", "watch": "Alt+W", "add_zone": "Alt+Shift+W", "hide": "Alt+H"})
+    shortcuts: dict = field(default_factory=lambda: {"quick": "Alt+Q", "watch": "Alt+W", "add_zone": "Alt+Shift+W", "hide": "Alt+H"})
     last_region: list | None = None
     pinned_regions: list = field(default_factory=list)
     overlay: OverlaySettings = field(default_factory=OverlaySettings)

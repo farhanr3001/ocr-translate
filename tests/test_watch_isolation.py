@@ -176,6 +176,30 @@ def test_quick_capture_does_not_reset_active_watch_zones():
     assert fake.anchors.items == {'watch-1': anchor}
 
 
+def test_watch_retries_a_capture_failure_without_stopping_other_zones(monkeypatch):
+    import arabic_lens.engine as module
+
+    first = Rect(0, 0, 200, 100)
+    second = Rect(200, 0, 200, 100)
+    calls = []
+    fake = SimpleNamespace(watch=True, generation=1, zone_states={},
+        context=(False, (first, second)), app_blocks=SimpleNamespace(blocked=lambda _: False),
+        manual=None, fast_watch=True, settings=Settings(watch_areas=[[0, 0, 200, 100], [200, 0, 200, 100]]))
+    monkeypatch.setattr(module, 'active_window', lambda *_: (None, first.union(second), 'Fixture'))
+    monkeypatch.setattr(module, 'window_at_rect', lambda _: None)
+
+    async def scan(index, bounds, *args, **kwargs):
+        calls.append(bounds)
+        if calls == [first]:
+            raise OSError('Transient screen capture failure')
+        if calls.count(first) > 1:
+            fake.watch = False  # Stop the test after a successful retry.
+
+    fake._scan_zone = scan
+    asyncio.run(Engine._watch_loop(fake))
+    assert calls == [first, second, second, first]
+
+
 def test_quick_without_window_identity_tracks_pixels_with_no_timer():
     image = np.zeros((90, 240, 4), dtype=np.uint8)
     image[20:45, 25:190:2, :3] = 240

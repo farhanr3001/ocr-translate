@@ -149,10 +149,14 @@ class OcrService:
         self.last_lines = []
         self.last_audit = {}
 
-    async def read(self, image, manual=False):
+    async def read(self, image, manual=False, audit=True):
         self.area_width = image.shape[1]
         self.last_lines = await self.provider.recognize(image)
         self.last_values = [TextBlock('', r) for r in getattr(self.provider, 'last_values', [])]
+        if not audit:
+            from .compact_text import recover_compact_labels
+            await recover_compact_labels(self.provider, image, self.last_lines)
+            return [b for b in self._group(self.last_lines, manual) if not self.text_filter.reason(b, manual)]
         # Audit changed crops even when the first pass found some text. Finding
         # a paragraph says nothing about whether nearby small labels were read.
         # The engine calls this only for new/changed pixels, never idle frames.

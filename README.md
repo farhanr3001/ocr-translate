@@ -69,8 +69,7 @@ dragging, maximize/restore, minimize and close-to-tray controls, plus resizing f
 | --- | --- |
 | Alt+W | Toggle Watch Mode |
 | Alt+Shift+W | Add another Watch area |
-| Alt+Q | Drag to translate; release submits; Esc cancels |
-| Alt+E | Translate the previous screen region again |
+| Alt+Q | Select text to translate, or dismiss the current Quick Translate result |
 | Alt+H | Hide current translations and cancel pending results |
 
 All shortcuts can be changed. Click a field, press the combination, then Apply. Windows and
@@ -78,8 +77,8 @@ other applications can reserve combinations; Arabic Lens checks availability and
 the previous bindings on conflict. Win, Ctrl, Alt and Shift are supported with letters,
 numbers and function keys. Selection stays within one display per capture.
 
-Arabic Lens opens to the compact **toolbox**. Its three buttons start or stop Watch
-Mode, select text, and translate the last area again. Choose how Watch starts below
+Arabic Lens opens to the compact **toolbox**. Its two buttons start or stop Watch
+Mode and select text. Choose how Watch starts below
 its Start button. Use the pin to keep the toolbox above other windows, or the expand
 icon to open full settings. The settings title bar has a return-to-toolbox button.
 Double-click the tray icon to reopen the toolbox after closing it. Right-click for
@@ -98,6 +97,8 @@ Scrolling over a settings field does not change its value; use the field, arrows
 slider or dropdown explicitly. The **Overlay** preview stays beside the scrolling
 controls. Changes save automatically and apply to new translations. **Restore overlay
 defaults** resets the appearance and behaviour together.
+Press **Alt+Q** again while a Quick Translate result is visible to dismiss it, then
+press it once more to select a new area. This leaves existing Watch translations in place.
 Paragraph breaks and list rows are preserved. Quick Capture waits briefly for the selection window to release focus; manual
 OCR/translation failures show a short message near the selected area rather than
 silently leaving you with no result. Changed or disappeared sources invalidate obsolete
@@ -136,7 +137,9 @@ saved until you delete them. **Use entire window** restores full-window Watch.
 Areas are screen locations; reselect them after moving or resizing a window.
 
 Each selected area has its own preview and text tracker. Watch checks small previews
-every 250 ms and lets changed text settle before OCR. Scrolling in one area does not
+and prioritizes localized changes when several fullscreen tiles need attention. A
+fast pass reads changing tiles, and a more detailed read follows when they settle.
+Short labels can translate as soon as their on-screen text is confirmed. Scrolling in one area does not
 recapture or recognize an unchanged area. Translations remain visible until their
 source text changes, scrolls out, or the source app closes.
 

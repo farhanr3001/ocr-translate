@@ -20,7 +20,7 @@ def _rows(gray):
     rows = []
     for contour in contours:
         x, y, width, height = cv2.boundingRect(contour)
-        if 5 <= height <= 12 and width >= max(26, height * 3):
+        if 5 <= height <= 14 and width >= max(26, height * 3):
             pixels = ink[y:y + height, x:x + width]
             if .10 <= pixels.mean() <= .80:
                 rows.append(Rect(x, y, width, height))
@@ -65,7 +65,7 @@ def _discard_ghosts(lines, rows, replacements):
 
 
 async def recover_small_rows(provider, image, lines, value_boxes):
-    if lines and all(line.rect.h > 12 for line in lines):
+    if lines and all(line.rect.h > 14 for line in lines):
         return 0
     gray = cv2.cvtColor(image, cv2.COLOR_BGRA2GRAY if image.shape[2] == 4 else cv2.COLOR_BGR2GRAY)
     rows = _rows(gray)
@@ -73,7 +73,9 @@ async def recover_small_rows(provider, image, lines, value_boxes):
     for row in rows:
         original = [line for line in lines if _on_row(line.rect, row)]
         complete = [line for line in original if _covers_row(line.rect, row)]
-        if ((len(original) == 1 and complete and not _language(complete[0].text)[1])
+        fractured = len(original) > 1 and any(not _language(line.text)[0] or len(line.text) <= 3 for line in original)
+        if ((row.h > 12 and not fractured)
+                or (len(original) == 1 and complete and not _language(complete[0].text)[1])
                 or any(line.container for line in original)
                 or sum(line.standalone and len(line.text) > 2 for line in original) > 1
                 or any(_on_row(value.rect, row) for value in value_boxes)):
@@ -94,7 +96,8 @@ async def recover_small_rows(provider, image, lines, value_boxes):
         possible = {row: [] for row, _ in selected}
         for factor in (3.0, 4.0):
             scale = min(factor, 2400 / max(crop.shape))
-            enlarged = cv2.resize(contrast, None, fx=scale, fy=scale, interpolation=cv2.INTER_LANCZOS4)
+            interpolation = cv2.INTER_LINEAR if any(row.h > 12 for row, _ in selected) else cv2.INTER_LANCZOS4
+            enlarged = cv2.resize(contrast, None, fx=scale, fy=scale, interpolation=interpolation)
             reread = await provider.recognize(cv2.cvtColor(enlarged, cv2.COLOR_GRAY2BGRA))
             for line in reread:
                 rect = line.rect

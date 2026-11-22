@@ -331,7 +331,7 @@ class SettingsWindow(QMainWindow):
         top.addWidget(self.label("Appearance example · Your apps stay in control", "muted"))
         modes = self.card(layout)
         self.section_header(modes, "How would you like to translate?", "Start with Watch Mode, or select just the text you need.", "capture")
-        for title, description, action, icon in (("Watch Mode", "Follow text automatically as your screen changes.", "watch", "eye"), ("Quick Translate", "Select text anywhere. Arabic appears on release.", "quick", "capture"), ("Translate Again", "Recapture your last selection in one keystroke.", "repeat", "repeat")):
+        for title, description, action, icon in (("Watch Mode", "Follow text automatically as your screen changes.", "watch", "eye"), ("Quick Translate", "Select text anywhere. Arabic appears on release.", "quick", "capture")):
             row = QHBoxLayout()
             row.setSpacing(16)
             glyph = QLabel()
@@ -346,11 +346,11 @@ class SettingsWindow(QMainWindow):
             shortcut = self.label(self.settings.shortcuts[action].replace("+", " + "), "shortcut")
             shortcut.setAlignment(Qt.AlignCenter)
             row.addWidget(shortcut)
-            button = self.button("Start" if action == "watch" else "Select text" if action == "quick" else "Translate", lambda checked=False, a=action: self.action_requested.emit(a), action == "watch")
+            button = self.button("Start" if action == "watch" else "Select text", lambda checked=False, a=action: self.action_requested.emit(a), action == "watch")
             button.setMinimumWidth(110)
             row.addWidget(button)
             modes.addLayout(row)
-            if action != "repeat":
+            if action == "watch":
                 line = QFrame(); line.setFrameShape(QFrame.HLine); line.setStyleSheet("color: #e4eadf; background: #e4eadf; max-height: 1px;")
                 modes.addWidget(line)
         setup = QFrame()
@@ -693,7 +693,7 @@ class SettingsWindow(QMainWindow):
     def shortcuts(self, layout):
         self.heading(layout, "Shortcuts", "One shortcut away.")
         form = self.form(layout)
-        for key, title in (("quick", "Quick Translate"), ("repeat", "Translate Last Region"), ("watch", "Watch Mode"), ("add_zone", "Add Watch Area"), ("hide", "Hide Translations")):
+        for key, title in (("quick", "Quick Translate"), ("watch", "Watch Mode"), ("add_zone", "Add Watch Area"), ("hide", "Hide Translations")):
             widget = QKeySequenceEdit(QKeySequence(self.settings.shortcuts[key].replace("Win", "Meta")))
             widget.setMaximumSequenceLength(1)
             form.addRow(self.t(title), widget)
@@ -926,7 +926,6 @@ class ToolboxWindow(QWidget):
         for action, title, label, icon in (
             ("watch", "Watch Mode", "Start", "eye"),
             ("quick", "Quick Translate", "Select text", "capture"),
-            ("repeat", "Translate Again", "Translate", "repeat"),
         ):
             card = QFrame()
             card.setObjectName("card")
