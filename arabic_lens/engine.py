@@ -360,6 +360,28 @@ class Engine(QObject):
     def _submit(self, coroutine):
         return asyncio.run_coroutine_threadsafe(coroutine, self.loop)
 
+    def prepare(self):
+        """Prepare both engines on the processing loop without starting capture."""
+        return self._submit(self._prepare())
+
+    async def _prepare(self):
+        results = await asyncio.gather(
+            self._prepare_ocr(), self.provider.prepare(), return_exceptions=True,
+        )
+        for component, result in zip(('OCR', 'offline translation'), results):
+            if isinstance(result, Exception):
+                log.debug("Startup preparation for %s failed (%s)", component, type(result).__name__)
+
+    async def _prepare_ocr(self):
+        import cv2
+        import numpy as np
+
+        async with self.ocr_lock:
+            if self.ocr is None:
+                sample = np.full((42, 180, 3), 255, dtype=np.uint8)
+                cv2.putText(sample, 'Arabic Lens', (8, 28), cv2.FONT_HERSHEY_SIMPLEX, .65, (0, 0, 0), 1)
+                await self._get_ocr().provider.recognize(sample)
+
     def _get_ocr(self):
         if self.ocr is None:
             self.ocr = OcrService(WindowsOcrProvider(), TextFilterService(self.settings))

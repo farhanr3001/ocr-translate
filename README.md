@@ -26,9 +26,11 @@ Windows 10 2004+ / Windows 11, x64, with English OCR installed, is required.
 
 No account, API key, internet connection, server or separate model download is needed.
 The HPLT English-to-Arabic model is bundled as an approximately 86 MB int8 model
-and runs only on the CPU with two processing threads at reduced worker priority;
-it is loaded only when uncached text needs translating. Repeated translations can
-come from the local cache. No GPU is used for translation.
+and runs on the CPU with two processing threads at reduced worker priority.
+Arabic Lens prepares Windows OCR and its built-in translator in the background
+at launch, then reuses them for Quick Translate and Watch Mode. They stay in
+memory between uses without scanning or translating in the background while both
+tools are idle. Repeated translations can come from the local cache.
 Uncached slang, idioms and noisy OCR can still produce literal or incorrect Arabic.
 
 ## Install and update

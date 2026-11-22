@@ -1,6 +1,6 @@
 # Arabic Lens — developer and AI handoff
 
-Last reviewed **21 November 2026**. This document preserves the product decisions, implementation map, verification workflow and remaining limitations for the next developer or AI assistant. Read it alongside [README.md](README.md). Code and current test results take precedence if this snapshot becomes stale.
+Last reviewed **22 November 2026**. This document preserves the product decisions, implementation map, verification workflow and remaining limitations for the next developer or AI assistant. Read it alongside [README.md](README.md). Code and current test results take precedence if this snapshot becomes stale.
 
 ## Start here
 
@@ -24,6 +24,14 @@ For a new session:
 Check the current Git state before issuing Git operations; the working checkout and published release may differ. The previous desktop OCR baseline was recorded before repository initialization.
 
 ## Current verified baseline
+
+### Startup readiness (0.1.12)
+
+`Application` schedules `Engine.prepare` after setting up the UI, including on minimized startup. It runs a synthetic image through the existing Windows OCR provider under the normal OCR lock, and one synthetic sentence directly through the built-in provider's existing worker. No desktop capture, user cache, history, results, or external provider is involved. Quick Translate and Watch reuse the same initialized instances. Normal requests still create the engines if needed, and switching back to the built-in provider prepares it when it has not been used. The app has no preparation timer or scan loop when its tools are idle.
+
+CTranslate2's optional MKL packed matrices are disabled by default before import. In the local benchmark, packing increased private commitment substantially. The same model, tokenizer and decoding settings produced identical output on the short, long and numeric examples in the benchmark. The first OCR-plus-uncached-translation sample took 442 ms with lazy initialization and 66–67 ms after low-memory preparation. The minimized packaged app used 219 MiB of working set and 430 MiB of private commitment, up from 97 MiB and 281 MiB in 0.1.11. Both registered zero process CPU time over the measured ten-second settled idle interval. These measurements are local and exclude desktop capture and overlay paint from the latency calculation.
+
+The background suite passed 252 tests with two optional video skips and the desktop-interactive selection fixture excluded. The staged and installed background smoke tests recognized English and produced an Arabic overlay. Exact-baseline 0.1.11 and 0.1.5 delta updates reopened once and preserved the model and settings. The full fallback reconstructed the staged payload. See `artifacts/readiness-0112` for the release checklist, measurements and test logs. The motion-specific PaddleOCR adapter remains a separate prototype.
 
 ### Closely spaced text and live edits (0.1.11)
 

@@ -166,6 +166,7 @@ class Application:
             self.window.show()
         elif not (minimized or self.settings.start_minimized):
             self.show_toolbox()
+        self.engine.prepare()
         if self.settings.remember_mode and self.settings.last_watch and not self.settings.first_run:
             self.engine.set_watch(True)
         self.update_timer = QTimer(self.qt)
@@ -830,9 +831,12 @@ class Application:
             return
         was_watch = self.engine.watch
         blocks_changed = candidate.blocked_apps != self.settings.blocked_apps
+        provider_changed = candidate.provider != self.settings.provider
         self.settings.__dict__.update(candidate.__dict__)
         self.settings.first_run = False
         self.service.save()
+        if provider_changed and self.settings.provider == 'Built-in offline':
+            self.engine.prepare()
         if self.settings.auto_check_updates and not self.qt.property('smokeTest'):
             if not self.update_timer.isActive():
                 self.update_timer.start()

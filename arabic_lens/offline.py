@@ -1,5 +1,6 @@
 """Bundled CPU translation: no account, network or local server required."""
 import asyncio
+import os
 import re
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -24,6 +25,9 @@ class OfflineTranslationProvider:
         kernel.SetThreadPriority.argtypes = [ctypes.c_void_p, ctypes.c_int]
         kernel.SetThreadPriority(kernel.GetCurrentThread(), -1)
         if self.model is None:
+            # Keep model weights ready between captures without MKL's much
+            # larger packed matrix allocation. The model and beam are unchanged.
+            os.environ.setdefault('CT2_PACKED_GEMM', '0')
             import ctranslate2
             import sentencepiece
             root = Path(__file__).parent / 'data/cpu-en-ar'
@@ -162,6 +166,12 @@ class TranslationProvider:
         self.settings = settings
         self.local = OfflineTranslationProvider()
         self.remote = HttpTranslationProvider(settings)
+
+    async def prepare(self):
+        # Use the existing batch worker so a real request arriving during startup
+        # shares the same model load. This bypasses the cache and history.
+        if self.settings.provider == 'Built-in offline' and self.local.dispatcher is None:
+            await self.local.translate('The window is open.')
 
     async def translate(self, text, keep=()):
         if self.settings.provider == 'Built-in offline':
