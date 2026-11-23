@@ -173,6 +173,20 @@ AR.update({
 })
 
 
+AR.update({
+    'Overlay settings': 'إعدادات مظهر الترجمة',
+    'Reset settings': 'إعادة ضبط الإعدادات',
+    'Restore every overlay setting to its default.': 'استعادة القيم الافتراضية لجميع إعدادات مظهر الترجمة.',
+    'Reset overlay settings?': 'هل تريد إعادة ضبط مظهر الترجمة؟',
+    'Restore the default overlay appearance, position, and behavior?': 'هل تريد استعادة المظهر والموضع والسلوك الافتراضي للترجمة؟',
+    'Setting could not be saved.': 'تعذّر حفظ الإعداد.',
+    'Uses colors and contrast sampled from the source text area. Editing a style manually switches matching off.':
+        'يستخدم الألوان والتباين من منطقة النص الأصلي. تعديل المظهر يدويًا يوقف المطابقة.',
+    'Click a field, then press your shortcut. Use Ctrl, Alt, Shift or Win with a letter, number or F-key. Changes save automatically.':
+        'انقر على حقل ثم اضغط الاختصار. استخدم Ctrl أو Alt أو Shift أو Win مع حرف أو رقم أو مفتاح وظائف. تُحفظ التغييرات تلقائيًا.',
+})
+
+
 class LocalizationService:
     def __init__(self, settings):
         self.settings = settings

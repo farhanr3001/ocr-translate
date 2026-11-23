@@ -88,6 +88,11 @@ def test_toolbox_shares_watch_choices_and_remembers_pin(qt, tmp_path):
         app.toolbox.pin.click()
         assert app.toolbox.windowFlags() & Qt.WindowStaysOnTopHint
         assert SettingsService(tmp_path).settings.toolbox_pinned is True
+        app.hide_controls()
+        assert app.toolbox.isVisible() and not app.toolbox.isMinimized()
+        app.toolbox.pin.click()
+        app.hide_controls()
+        assert app.toolbox.isVisible() and not app.toolbox.isMinimized()
         actions = []
         app.toolbox.action_requested.connect(actions.append)
         app.toolbox.watch_button.click()
@@ -125,6 +130,108 @@ def test_overlay_changes_persist_without_applying_other_settings(qt, tmp_path):
         assert loaded.shortcuts == Settings().shortcuts
     finally:
         window.deleteLater()
+        store.close()
+
+
+def test_overlay_style_preview_and_replace_window_use_selected_colors_and_font(qt, tmp_path, monkeypatch):
+    from PySide6.QtGui import QColor, QFontDatabase, QFontInfo
+    from PySide6.QtWidgets import QColorDialog
+    from arabic_lens.models import Rect, Translation
+    from arabic_lens.overlay import OverlayManager, physical_to_logical
+
+    settings = Settings()
+    settings.overlay.fade_ms = 0
+    settings.overlay.match_game = True
+    store = TranslationStore(tmp_path / 'appearance.db', settings)
+    window = SettingsWindow(settings, LocalizationService(settings), store)
+    manager = OverlayManager(settings, lambda _: None)
+    window.overlay_changed.connect(lambda values: vars(settings.overlay).update(values))
+    # The first overlay cannot be excluded. A replacement must make its own attempt.
+    outcomes = iter([False, False, False, True])
+    monkeypatch.setattr('arabic_lens.overlay.exclude_capture', lambda _: next(outcomes))
+    result = Translation('manual', 'Find the key before sunset.', 'اعثر على المفتاح قبل غروب الشمس.',
+                         Rect(140, 120, 300, 30), line_height=23)
+    try:
+        manager.show(result)
+        assert manager.windows['manual'].appearance.position == 'Below'
+        window.overlay_fields['background_opacity'].setValue(42)
+        assert not settings.overlay.match_game
+        colors = {'background_color': '#a31b61', 'text_color': '#0dfa19'}
+        for field, color in colors.items():
+            monkeypatch.setattr(QColorDialog, 'getColor', lambda *_: QColor(color))
+            window.overlay_fields[field].click()
+        window.overlay_fields['opacity'].setValue(81)
+        font = next(name for name in QFontDatabase.families(QFontDatabase.Arabic)
+                    if name != settings.overlay.font)
+        selector = window.overlay_fields['font']
+        selector.setCurrentIndex(selector.findData(font))
+        manager.refresh_appearance()
+        overlay = manager.windows['manual']
+        assert overlay.capture_excluded and not manager.capture_visible_rects()
+        assert overlay.appearance.position == 'Replace'
+        _, source = physical_to_logical(result.rect)
+        assert Rect(overlay.x(), overlay.y(), overlay.width(), overlay.height()).overlap(source) > 0
+        for surface in (window.preview, overlay):
+            assert surface.appearance.background_opacity == 42
+            assert surface.appearance.text_color == colors['text_color']
+            assert surface.appearance.background_color == colors['background_color']
+            assert QFontInfo(surface.document.defaultFont()).family() == font
+        assert window.preview_scene.effect.opacity() == pytest.approx(.81)
+        assert overlay.windowOpacity() == pytest.approx(.81, abs=.01)
+        image = overlay.grab().toImage()
+        pixel = image.pixelColor(round(image.width() * .5), round(image.height() * .88))
+        assert pixel.alpha() == pytest.approx(round(255 * .42), abs=1)
+        assert pixel.red() == pytest.approx(QColor(colors['background_color']).red(), abs=2)
+    finally:
+        manager.clear(immediate=True)
+        window.deleteLater()
+        store.close()
+
+
+def test_toolbox_reset_confirms_and_persists_all_overlay_defaults(qt, tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from PySide6.QtCore import QTimer
+    from PySide6.QtWidgets import QMessageBox
+    from arabic_lens.app import Application
+    from arabic_lens.config import OverlaySettings, SettingsService
+
+    app = Application.__new__(Application)
+    app.service = SettingsService(tmp_path)
+    app.settings = app.service.settings
+    app.settings.toolbox_pinned = True
+    app.settings.overlay.background_opacity = 20
+    app.settings.overlay.quick_lifetime = 'timer'
+    app.settings.overlay.border_width = 4  # Restore hidden properties as well.
+    app.overlay_save_timer = QTimer()
+    saved = []
+    app.overlays = SimpleNamespace(refresh_appearance=lambda: saved.append(True))
+    localization = LocalizationService(app.settings)
+    store = TranslationStore(tmp_path / 'reset.db', app.settings)
+    app.window = SettingsWindow(app.settings, localization, store)
+    app.toolbox = ToolboxWindow(app.settings, localization)
+    app.window.overlay_changed.connect(app.edit_overlay)
+    app.toolbox.reset_overlay_requested.connect(app.reset_overlay)
+    choices = iter([QMessageBox.RejectRole, QMessageBox.AcceptRole])
+
+    def choose(box):
+        assert box.buttonRole(box.defaultButton()) == QMessageBox.RejectRole
+        role = next(choices)
+        box.chosen = next(button for button in box.buttons() if box.buttonRole(button) == role)
+        return 0
+
+    monkeypatch.setattr(QMessageBox, 'exec', choose)
+    monkeypatch.setattr(QMessageBox, 'clickedButton', lambda box: box.chosen)
+    try:
+        assert app.toolbox.reset_settings.toolTip()
+        app.toolbox.reset_settings.click()
+        assert app.settings.overlay.background_opacity == 20 and not saved
+        app.toolbox.reset_settings.click()
+        loaded = SettingsService(tmp_path).settings
+        assert loaded.overlay == OverlaySettings()
+        assert loaded.toolbox_pinned and saved == [True]
+    finally:
+        app.toolbox.deleteLater()
+        app.window.deleteLater()
         store.close()
 
 

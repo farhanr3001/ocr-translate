@@ -98,6 +98,5 @@ def test_settings_wheel_never_changes_fields_and_overlay_defaults(tmp_path):
     qt.processEvents()
     button = window.translate_button
     QTest.mouseClick(button, Qt.LeftButton)
-    assert values[-1]['test'] and values[-1]['provider'] == 'Built-in offline'
-    assert values[-1]['test_text'] == 'Translate this sentence.'
+    assert values[-1] == {'test': True, 'test_text': 'Translate this sentence.'}
     window.hide(); window.deleteLater(); store.close()

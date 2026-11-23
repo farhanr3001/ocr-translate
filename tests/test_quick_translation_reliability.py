@@ -63,7 +63,7 @@ def test_quick_capture_real_ocr_translation_repeat_cancel_failure_and_recovery(m
     try:
         # A real click on the built-in button must apply the provider and show
         # an uncached model result inside the Translation page.
-        app.window.navigate(2)
+        app.show_settings(2)
         app.window.overlay_fields['follow_content'].setChecked(False)
         app.window.fields['provider'].setCurrentIndex(1)
         app.window.builtin_toggle.setChecked(True)
@@ -73,11 +73,16 @@ def test_quick_capture_real_ocr_translation_repeat_cancel_failure_and_recovery(m
         QTest.mouseClick(button, Qt.LeftButton)
         wait(qt, lambda: 'المفتاح' in app.window.translation_feedback.text())
         assert app.settings.provider == 'Built-in offline'
+        app.window.fields['minimize_tray'].setChecked(False)
+        assert app.service.settings.minimize_tray is False
+        app.window.overlay_fields['background_opacity'].setValue(54)
+        app.show_toolbox()
         for index in range(12):
             if index == 6:
                 snapshot[0] = frame('Bring the blue fabric to the village shop.')
             count = len(results)
             app.action('quick')
+            assert app.toolbox.isVisible() and not app.toolbox.isMinimized()
             selector = app.selector.windows[0]
             QTest.mousePress(selector, Qt.LeftButton, pos=QPoint(40, 180))
             QTest.mouseRelease(selector, Qt.LeftButton, pos=QPoint(940, 320))
@@ -85,6 +90,7 @@ def test_quick_capture_real_ocr_translation_repeat_cancel_failure_and_recovery(m
             wait(qt, lambda: 'manual' in app.overlays.windows)
             overlay = app.overlays.windows['manual']
             assert overlay.isVisible() and not overlay.closing
+            assert overlay.appearance.background_opacity == 54
             assert results[-1].arabic and results[-1].source_window == identity
             if index not in (0, 6): assert results[-1].cached
             app.action('quick')
@@ -122,6 +128,7 @@ def test_quick_capture_real_ocr_translation_repeat_cancel_failure_and_recovery(m
     finally:
         app.shutdown()
         qt.aboutToQuit.disconnect(app.shutdown)
+        app.toolbox.hide(); app.toolbox.deleteLater()
         app.window.hide(); app.window.deleteLater()
         qt.setProperty('smokeTest', False)
 

@@ -113,7 +113,8 @@ class ArabicSurface(QWidget):
         self.fit_margin = 3 if compact else (4 if cell else 8)
         width, height = max(24 if cell else 72, source.w + self.fit_margin * 2), max(18 if compact else 34, source.h + self.fit_margin * 2)
         padding = 1 if cell else (2 if compact else (4 if source.h < 75 else 8))
-        self.appearance = replace(self.appearance, padding=padding, background_opacity=100)
+        self.appearance = replace(self.appearance, padding=min(self.appearance.padding, padding))
+        padding = self.appearance.padding
         font = self.document.defaultFont()
         if cell:
             option = self.document.defaultTextOption()
@@ -150,7 +151,7 @@ class ArabicSurface(QWidget):
         from dataclasses import replace
         self.fit_margin = 2
         padding = 0  # Lines of Arabic at the source size already fill the box.
-        self.appearance = replace(self.appearance, padding=padding, background_opacity=100)
+        self.appearance = replace(self.appearance, padding=padding)
         font = self.document.defaultFont()
         font.setPixelSize(line_font)
         self.document.setDefaultFont(font)
@@ -172,8 +173,8 @@ class ArabicSurface(QWidget):
     def _fit_single_line(self, source, max_extra, line_font):
         from dataclasses import replace
         self.fit_margin = 2
-        padding = 1
-        self.appearance = replace(self.appearance, padding=padding, background_opacity=100)
+        padding = min(self.appearance.padding, 1)
+        self.appearance = replace(self.appearance, padding=padding)
         font = self.document.defaultFont()
         font.setPixelSize(line_font)
         self.document.setDefaultFont(font)
@@ -200,7 +201,7 @@ class ArabicSurface(QWidget):
         from dataclasses import replace
         self.fit_margin = 0
         self.compact_line = self.single_line = True
-        self.appearance = replace(self.appearance, padding=0, background_opacity=100,
+        self.appearance = replace(self.appearance, padding=0,
                                   radius=min(self.appearance.radius, 2))
         font = self.document.defaultFont()
         font.setPixelSize(min(line_font, max(8, source.h)))
@@ -419,6 +420,7 @@ class OverlayManager:
         self.on_remove = on_remove
         self.source_rects = {}
         self.sources = {}
+        self.results = {}
         self.windows = {}
         self.retired = []
         self.controls = {}
@@ -438,11 +440,9 @@ class OverlayManager:
         return self._visible_rects if self.capture_visible else ()
 
     def _refresh_visible_rects(self):
-        if not self.capture_visible:
-            return
         rects = []
         for overlay in list(self.windows.values()) + list(self.controls.values()):
-            if not overlay.isVisible():
+            if overlay.capture_excluded or not overlay.isVisible():
                 continue
             screen = overlay.screen() or QApplication.primaryScreen()
             try:
@@ -450,6 +450,7 @@ class OverlayManager:
             except KeyError:
                 continue
         self._visible_rects = tuple(rects)
+        self.capture_visible = bool(rects)
 
     def _duplicate_of(self, result):
         """A Quick result already shown by Watch (or vice versa)."""
@@ -469,13 +470,18 @@ class OverlayManager:
                 return other
         return None
 
-    def show(self, result):
+    def refresh_appearance(self):
+        for result in list(self.results.values()):
+            self.show(result, restyle=True)
+
+    def show(self, result, restyle=False):
         if result.id in self.dismissed:
             return
         if not result.notice and self._duplicate_of(result):
             return
         previous = self.windows.get(result.id)
         replacing = previous is not None and not previous.closing and previous.isVisible()
+        remaining = previous.timer.remainingTime() if replacing and restyle else -1
         if replacing:
             # In-place update (a line grew or was corrected): swap without a
             # fade so the subtitle never blinks while text is being typed.
@@ -490,6 +496,7 @@ class OverlayManager:
         from .text import normalize
         self.source_rects[result.id] = result.rect
         self.sources[result.id] = normalize(result.source)
+        self.results[result.id] = result
         screen, source = physical_to_logical(result.rect)
         available = screen.availableGeometry()
         bounds = Rect(available.x(), available.y(), available.width(), available.height())
@@ -498,23 +505,17 @@ class OverlayManager:
         a = effective_appearance(self.settings.overlay, result.style_hint)
         if result.notice:
             a = replace(a, position='Below', duration=4, persistence=False, max_width=420, font_size=20)
-        if self.capture_visible and a.position == 'Replace':
-            a = replace(a, position='Below')
         a = replace(a, max_width=min(a.max_width, bounds.w - 20))
         overlay = TranslationOverlay(a, result.arabic)
         overlay.notice = result.notice
-        if self.capture_visible is None or (self.capture_visible is False and not overlay.capture_excluded):
-            self.capture_visible = not overlay.capture_excluded
-            if self.capture_visible:
-                # Exclusion only keeps overlays out of screen capture. Some
-                # Windows builds refuse it; still show translations, mask them
-                # from our own OCR, and never cover the source text.
+        if a.position == 'Replace' and not overlay.capture_excluded:
+            # Retry with the native window shown, without flashing or taking focus.
+            overlay.setWindowOpacity(0)
+            overlay.show()
+            overlay.capture_excluded = exclude_capture(overlay)
+            if not overlay.capture_excluded:
+                a = overlay.appearance = replace(a, position='Below')
                 self.report("Capture exclusion is unavailable; overlays are placed beside text.")
-                if a.position == 'Replace':
-                    overlay.close(); overlay.deleteLater()
-                    a = replace(a, position='Below')
-                    overlay = TranslationOverlay(a, result.arabic)
-                    overlay.notice = result.notice
         avoid = [physical_to_logical(r)[1] for r in result.avoid_regions]
         if a.position == 'Replace':
             # Grow only into free space: never over a neighbouring value
@@ -554,7 +555,7 @@ class OverlayManager:
         if a.position == 'Replace':
             rect = Rect(max(bounds.x, min(source.x - overlay.fit_margin, bounds.right - overlay.width())),
                 max(bounds.y, min(source.y - overlay.fit_margin, bounds.bottom - overlay.height())), overlay.width(), overlay.height())
-        elif replacing and a.position == previous.appearance.position:
+        elif replacing and not restyle and a.position == previous.appearance.position:
             # Keep a growing line's subtitle where the reader already looks.
             rect = Rect(previous.x(), previous.y(), overlay.width(), overlay.height())
             if rect.right > bounds.right - 10:
@@ -573,6 +574,8 @@ class OverlayManager:
             seconds = getattr(self.settings.overlay, 'quick_seconds', 0)
             lifetime = seconds if seconds > 0 else reading_seconds(result.arabic)
         overlay.reveal(fade=not replacing, lifetime=lifetime)
+        if lifetime and remaining >= 0:
+            overlay.timer.start(remaining)
         self.interaction_timer.start()
         overlay.animation.finished.connect(lambda: self._collect(result.id, overlay))
         overlay.timer.timeout.connect(lambda key=result.id: self._expired(key, overlay))
@@ -602,6 +605,7 @@ class OverlayManager:
             self.windows.pop(key, None)
             self.source_rects.pop(key, None)
             self.sources.pop(key, None)
+            self.results.pop(key, None)
             if self.on_remove:
                 self.on_remove(key)
             self.retired.append(overlay)
@@ -613,6 +617,7 @@ class OverlayManager:
                 self.windows.pop(key, None)
                 self.source_rects.pop(key, None)
                 self.sources.pop(key, None)
+                self.results.pop(key, None)
                 if self.on_remove:
                     self.on_remove(key)
             if overlay in self.retired:
@@ -643,7 +648,7 @@ class OverlayManager:
             elif control:
                 control.dragging = False
                 control.hide()
-        if self.capture_visible:
+        if self.capture_visible or self.controls:
             self._refresh_visible_rects()
         if not self.windows:
             self.interaction_timer.stop()
@@ -665,6 +670,7 @@ class OverlayManager:
     def remove(self, key, immediate=False, notify=True):
         self.source_rects.pop(key, None)
         self.sources.pop(key, None)
+        self.results.pop(key, None)
         if notify and self.on_remove:
             self.on_remove(key)
         control = self.controls.pop(key, None)
@@ -703,6 +709,9 @@ class OverlayManager:
             _, current = physical_to_logical(rect)
             overlay.move(overlay.x() + current.x - previous.x, overlay.y() + current.y - previous.y)
             self.source_rects[key] = rect
+            if key in self.results:
+                from dataclasses import replace
+                self.results[key] = replace(self.results[key], rect=rect)
             if key in self.controls:
                 self.controls[key].follow_overlay()
             self._refresh_visible_rects()

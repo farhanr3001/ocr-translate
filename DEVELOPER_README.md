@@ -1,6 +1,8 @@
 # Arabic Lens — developer and AI handoff
 
-Last reviewed **22 November 2026**. This document preserves the product decisions, implementation map, verification workflow and remaining limitations for the next developer or AI assistant. Read it alongside [README.md](README.md). Code and current test results take precedence if this snapshot becomes stale.
+Last reviewed **23 November 2026**. This document preserves the product decisions, implementation map, verification workflow and remaining limitations for the next developer or AI assistant. Read it alongside [README.md](README.md). Code and current test results take precedence if this snapshot becomes stale.
+
+In 0.1.14 settings save at the point of editing. Overlay changes update the shared preview renderer immediately and restyle displayed overlays without recapturing or translating their source. The toolbox stays open while either translation tool runs, and its confirmed reset restores the complete overlay settings object. Replace mode honors the configured background opacity and checks capture exclusion per window. A failed exclusion retries once after showing the native window and uses adjacent placement for that overlay if Windows still refuses.
 
 ## Start here
 

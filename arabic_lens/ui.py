@@ -192,7 +192,6 @@ class SettingsWindow(QMainWindow):
         bottom.setContentsMargins(0, 14, 0, 0)
         self.status_label = self.label("Ready", "muted")
         bottom.addWidget(self.status_label, 1)
-        bottom.addWidget(self.button("Apply changes", self.apply, True))
         content.addWidget(footer)
         row.addLayout(content, 1)
         old = self.takeCentralWidget()
@@ -214,6 +213,7 @@ class SettingsWindow(QMainWindow):
         self.navigate(page)
         self.update_watch(self.watch_enabled)
         self.sidebar_language.currentIndexChanged.connect(lambda index: self.fields["language"].setCurrentIndex(index))
+        self.connect_setting_fields()
         from .ui_controls import protect_wheel_fields
         protect_wheel_fields(self)
 
@@ -374,7 +374,6 @@ class SettingsWindow(QMainWindow):
         self.check(form, "minimize_tray", "Close to tray")
         self.check(form, "remember_mode", "Remember Watch Mode")
         self.check(form, "auto_check_updates", "Check for updates automatically")
-        language.currentIndexChanged.connect(lambda: self.apply())
         updates = self.card(layout)
         updates.addWidget(self.label("Updates", "sectionTitle"))
         from .version import APP_VERSION
@@ -435,9 +434,9 @@ class SettingsWindow(QMainWindow):
         advanced_toggle.setChecked(self.settings.provider != 'Built-in offline')
         self.translation_advanced.setVisible(advanced_toggle.isChecked())
         self.fields['provider'].setEnabled(advanced_toggle.isChecked())
-        self.builtin_toggle.toggled.connect(self.set_builtin_mode)
-        advanced_toggle.toggled.connect(lambda enabled: self.set_builtin_mode(not enabled))
-        self.fields['provider'].currentIndexChanged.connect(lambda: self.set_builtin_mode(self.fields['provider'].currentData() == 'Built-in offline'))
+        self.builtin_toggle.toggled.connect(lambda enabled: self.set_builtin_mode(enabled, save=True))
+        advanced_toggle.toggled.connect(lambda enabled: self.set_builtin_mode(not enabled, save=True))
+        self.fields['provider'].currentIndexChanged.connect(lambda: self.set_builtin_mode(self.fields['provider'].currentData() == 'Built-in offline', save=True))
         row = QHBoxLayout()
         row.addWidget(self.button("Clear cache", lambda: self.clear_data("cache")))
         row.addStretch()
@@ -466,9 +465,9 @@ class SettingsWindow(QMainWindow):
         translator.addWidget(self.translation_feedback)
 
     def use_builtin(self):
-        self.set_builtin_mode(True)
+        self.set_builtin_mode(True, save=True)
 
-    def set_builtin_mode(self, enabled):
+    def set_builtin_mode(self, enabled, save=False):
         for toggle, state in ((self.builtin_toggle, enabled), (self.provider_toggle, not enabled)):
             toggle.blockSignals(True); toggle.setChecked(state); toggle.blockSignals(False)
         self.builtin_toggle.setText(self.t('On' if enabled else 'Off'))
@@ -481,6 +480,8 @@ class SettingsWindow(QMainWindow):
         provider.blockSignals(False)
         provider.setEnabled(not enabled)
         self.translation_advanced.setVisible(not enabled)
+        if save:
+            self.save_field('provider')
 
     def translate_input(self):
         text = self.translation_input.toPlainText().strip()
@@ -490,7 +491,7 @@ class SettingsWindow(QMainWindow):
         if len(text) > 6000:
             self.translation_feedback.setText(self.t('Please translate up to 6000 characters at a time.'))
             return
-        self.apply(test=True)
+        self.apply_requested.emit({'test': True, 'test_text': text})
 
     def watch_page(self, layout):
         self.heading(layout, "Watch Mode", "Useful words. Less noise.")
@@ -561,7 +562,7 @@ class SettingsWindow(QMainWindow):
         self.preview_scene = OverlayPreview(self.preview_appearance)
         self.preview = self.preview_scene.surface
         preview_card.addWidget(self.preview_scene)
-        self.preview_fit_hint = self.label("Replace fits the original text and uses a solid background.", "muted")
+        self.preview_fit_hint = self.label("Replace fits the overlay to the original text.", "muted")
         self.preview_match_hint = self.label("This example uses a dark background. Matching adapts to the region on screen.", "muted")
         preview_card.addWidget(self.preview_fit_hint)
         preview_card.addWidget(self.preview_match_hint)
@@ -596,7 +597,9 @@ class SettingsWindow(QMainWindow):
         appearance.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
         appearance.setRowWrapPolicy(QFormLayout.WrapLongRows)
         appearance_card.addLayout(appearance)
-        fonts = QFontDatabase.families()
+        fonts = QFontDatabase.families(QFontDatabase.Arabic)
+        if self.settings.overlay.font not in fonts:
+            fonts.insert(0, self.settings.overlay.font)
         preferred = [f for f in ("Segoe UI", "Tahoma", "Arial", "Noto Sans Arabic", "Noto Naskh Arabic") if f in fonts]
         font = self.combo(appearance, "font", "Font", [(f, f) for f in preferred + [f for f in fonts if f not in preferred]], overlay=True)
         font.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
@@ -620,15 +623,17 @@ class SettingsWindow(QMainWindow):
         behaviour_card.addLayout(behaviour)
         self.spin(behaviour, "max_width", "Maximum width", 240, 1000, overlay=True)
         self.check(behaviour, "match_game", "Match source appearance", overlay=True)
-        self.overlay_fields["match_game"].setToolTip(self.t("Uses colors and contrast sampled from the source text area."))
+        self.overlay_fields["match_game"].setToolTip(self.t("Uses colors and contrast sampled from the source text area. Editing a style manually switches matching off."))
         self.combo(behaviour, "interaction_hold", "Hold to show close buttons", [(s, s) for s in ('Ctrl+Alt', 'Ctrl+Shift', 'Alt+Shift', 'Ctrl+Alt+Shift')], overlay=True)
         self.spin(behaviour, "fade_ms", "Fade duration (ms)", 0, 1000, overlay=True, step=20)
         controls_layout.addWidget(self.button("Restore overlay defaults", self.restore_overlay))
         controls_layout.addStretch()
-        for widget in self.overlay_fields.values():
-            if isinstance(widget, QComboBox): widget.currentIndexChanged.connect(self.overlay_edited)
-            elif isinstance(widget, QCheckBox): widget.toggled.connect(self.overlay_edited)
-            elif isinstance(widget, (QSpinBox, SliderSpin)): widget.valueChanged.connect(self.overlay_edited)
+        for key, widget in self.overlay_fields.items():
+            if isinstance(widget, QComboBox): signal = widget.currentIndexChanged
+            elif isinstance(widget, QCheckBox): signal = widget.toggled
+            elif isinstance(widget, SliderSpin): signal = widget.valueChanged
+            else: continue
+            signal.connect(lambda _value, name=key: self.overlay_edited(name))
         self.update_preview()
         self.overlay_fields['quick_seconds'].setEnabled(lifetime.currentData() == 'timer')
 
@@ -643,7 +648,7 @@ class SettingsWindow(QMainWindow):
         if color.isValid():
             button.setText(color.name())
             self.color_swatch(button)
-            self.overlay_edited()
+            self.overlay_edited('color')
 
     def restore_overlay(self):
         defaults = OverlaySettings()
@@ -683,7 +688,12 @@ class SettingsWindow(QMainWindow):
         self.preview_fit_hint.setVisible(self.preview_appearance.position == 'Replace')
         self.preview_match_hint.setVisible(self.preview_appearance.match_game)
 
-    def overlay_edited(self):
+    def overlay_edited(self, key=None):
+        if key in {'color', 'background_opacity', 'font', 'font_size', 'padding', 'radius', 'shadow', 'outline'}:
+            match = self.overlay_fields['match_game']
+            match.blockSignals(True)
+            match.setChecked(False)
+            match.blockSignals(False)
         self.update_preview()
         self.overlay_changed.emit(self.overlay_values())
 
@@ -698,7 +708,7 @@ class SettingsWindow(QMainWindow):
             widget.setMaximumSequenceLength(1)
             form.addRow(self.t(title), widget)
             self.shortcut_fields[key] = widget
-        layout.addWidget(self.label("Click a field, then press your shortcut. Use Ctrl, Alt, Shift or Win with a letter, number or F-key. Conflicts are checked on Apply.", "muted"))
+        layout.addWidget(self.label("Click a field, then press your shortcut. Use Ctrl, Alt, Shift or Win with a letter, number or F-key. Changes save automatically.", "muted"))
 
     def ignore_page(self, layout):
         self.heading(layout, "Ignore List", "Keep the useful text.")
@@ -732,7 +742,7 @@ class SettingsWindow(QMainWindow):
         blocked.addWidget(self.blocked_list)
         buttons = QHBoxLayout()
         buttons.addWidget(self.button("Add app", self.add_blocked_app))
-        buttons.addWidget(self.button("Remove", lambda: self.blocked_list.takeItem(self.blocked_list.currentRow())))
+        buttons.addWidget(self.button("Remove", self.remove_blocked_app))
         buttons.addStretch()
         blocked.addLayout(buttons)
         region_card = self.card(layout)
@@ -762,7 +772,17 @@ class SettingsWindow(QMainWindow):
             app = picker.selected_app
             if path_key(app['path']) not in {path_key(self.blocked_list.item(i).data(Qt.UserRole)['path']) for i in range(self.blocked_list.count())}:
                 self.add_blocked_item(app)
+                self.save_blocked_apps()
         picker.deleteLater()
+
+    def remove_blocked_app(self):
+        if self.blocked_list.currentRow() >= 0:
+            self.blocked_list.takeItem(self.blocked_list.currentRow())
+            self.save_blocked_apps()
+
+    def save_blocked_apps(self):
+        apps = [self.blocked_list.item(i).data(Qt.UserRole) for i in range(self.blocked_list.count())]
+        self.apply_requested.emit({'blocked_apps': apps})
 
     def search_ignore(self, query):
         for i in range(self.ignore_list.topLevelItemCount()):
@@ -792,6 +812,7 @@ class SettingsWindow(QMainWindow):
         if ok and text.strip() and text.strip().casefold() not in {self.ignore_list.topLevelItem(i).text(0).casefold() for i in range(self.ignore_list.topLevelItemCount())}:
             self.add_ignore_item(text.strip())
             self.search_ignore(self.ignore_search.text())
+            self.apply_requested.emit(self.ignore_values())
 
     def edit_ignore(self):
         item = self.ignore_list.currentItem()
@@ -805,15 +826,20 @@ class SettingsWindow(QMainWindow):
                     item.setData(1, Qt.UserRole, arabic.strip())
                     if not arabic.strip():
                         self.ignore_translation_requested.emit(text.strip())
+                    self.search_ignore(self.ignore_search.text())
+                    self.apply_requested.emit(self.ignore_values())
 
     def remove_ignore(self):
-        self.ignore_list.takeTopLevelItem(self.ignore_list.indexOfTopLevelItem(self.ignore_list.currentItem()))
+        if self.ignore_list.currentItem():
+            self.ignore_list.takeTopLevelItem(self.ignore_list.indexOfTopLevelItem(self.ignore_list.currentItem()))
+            self.apply_requested.emit(self.ignore_values())
 
     def restore_ignore(self):
         self.ignore_list.clear()
         for word in DEFAULT_IGNORE:
             self.add_ignore_item(word)
         self.search_ignore(self.ignore_search.text())
+        self.apply_requested.emit(self.ignore_values())
 
     def history_page(self, layout):
         self.heading(layout, "History", "Your recent translations.")
@@ -851,13 +877,54 @@ class SettingsWindow(QMainWindow):
             self.store.clear(table)
             self.refresh_history()
 
+    def connect_setting_fields(self):
+        for key, widget in self.fields.items():
+            if key == 'provider':
+                continue  # The linked translation switches save this themselves.
+            if isinstance(widget, QCheckBox):
+                widget.toggled.connect(lambda _value, name=key: self.save_field(name))
+            elif isinstance(widget, QComboBox):
+                widget.currentIndexChanged.connect(lambda _value, name=key: self.save_field(name))
+            elif isinstance(widget, QSpinBox):
+                widget.valueChanged.connect(lambda _value, name=key: self.save_field(name))
+            elif isinstance(widget, QLineEdit):
+                widget.editingFinished.connect(lambda name=key: self.save_field(name))
+        for widget in self.shortcut_fields.values():
+            widget.editingFinished.connect(lambda: self.apply_requested.emit({'shortcuts': self.shortcut_values()}))
+        self.key_field.editingFinished.connect(self.save_secret)
+        self.remove_key.clicked.connect(lambda checked: self.save_secret(remove=True) if checked else None)
+
+    def save_field(self, key):
+        self.apply_requested.emit({key: self.field_value(self.fields[key])})
+
+    def save_secret(self, remove=False):
+        value = self.key_field.text().strip()
+        if value or remove:
+            self.apply_requested.emit({'secret': value, 'remove_secret': remove})
+            self.key_field.clear()
+            self.remove_key.setChecked(False)
+            self.key_field.setPlaceholderText(self.t('Saved securely — leave blank to keep') if self.settings.api_key else '••••••••')
+
+    def shortcut_values(self):
+        return {key: widget.keySequence().toString(QKeySequence.PortableText).replace('Meta', 'Win')
+                for key, widget in self.shortcut_fields.items()}
+
+    def restore_shortcuts(self):
+        for key, widget in self.shortcut_fields.items():
+            widget.blockSignals(True)
+            widget.setKeySequence(QKeySequence(self.settings.shortcuts[key].replace('Win', 'Meta')))
+            widget.blockSignals(False)
+
+    def ignore_values(self):
+        items = [self.ignore_list.topLevelItem(i) for i in range(self.ignore_list.topLevelItemCount())]
+        return {'ignored': [item.text(0) for item in items], 'ignored_translations': {
+            item.text(0): item.data(1, Qt.UserRole) for item in items if item.data(1, Qt.UserRole)}}
+
     def apply(self, checked=False, test=False):
         values = {key: self.field_value(widget) for key, widget in self.fields.items()}
         values["overlay"] = self.overlay_values()
-        values["shortcuts"] = {key: widget.keySequence().toString(QKeySequence.PortableText).replace("Meta", "Win") for key, widget in self.shortcut_fields.items()}
-        items = [self.ignore_list.topLevelItem(i) for i in range(self.ignore_list.topLevelItemCount())]
-        values["ignored"] = [item.text(0) for item in items]
-        values['ignored_translations'] = {item.text(0): item.data(1, Qt.UserRole) for item in items if item.data(1, Qt.UserRole)}
+        values['shortcuts'] = self.shortcut_values()
+        values.update(self.ignore_values())
         values["blocked_apps"] = [self.blocked_list.item(i).data(Qt.UserRole) for i in range(self.blocked_list.count())]
         values["secret"] = self.key_field.text().strip()
         values["remove_secret"] = self.remove_key.isChecked()
@@ -883,17 +950,55 @@ class ToolboxWindow(QWidget):
     watch_startup_changed = Signal(str)
     pin_changed = Signal(bool)
     settings_requested = Signal()
+    reset_overlay_requested = Signal()
 
     def __init__(self, settings, localization):
         super().__init__()
         self.settings, self.l = settings, localization
         self.watch_enabled = False
+        self.capture_bounds = ()
+        self.capture_excluded = False
         self.setWindowFlags(Qt.Window | Qt.FramelessWindowHint
                             | (Qt.WindowStaysOnTopHint if settings.toolbox_pinned else Qt.WindowType(0)))
         self.setWindowTitle("Arabic Lens")
         self.setWindowIcon(lens_icon(active=True))
         self.setStyleSheet(STYLE)
         self.build()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        from .windows import exclude_capture
+        self.capture_excluded = exclude_capture(self)
+        self.update_capture_bounds()
+
+    def hideEvent(self, event):
+        self.capture_bounds = ()
+        super().hideEvent(event)
+
+    def moveEvent(self, event):
+        super().moveEvent(event)
+        self.update_capture_bounds()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.update_capture_bounds()
+
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() == event.Type.WindowStateChange:
+            self.update_capture_bounds()
+
+    def update_capture_bounds(self):
+        if not self.isVisible() or self.isMinimized() or self.capture_excluded:
+            self.capture_bounds = ()
+            return
+        from .models import Rect
+        from .overlay import logical_to_physical
+        rect = Rect(self.x(), self.y(), self.width(), self.height())
+        try:
+            self.capture_bounds = (logical_to_physical(self.screen(), rect),)
+        except KeyError:
+            self.capture_bounds = ()
 
     def build(self):
         self.setLayoutDirection(Qt.RightToLeft if self.settings.language == "ar" else Qt.LeftToRight)
@@ -953,8 +1058,27 @@ class ToolboxWindow(QWidget):
                                                            self.watch_startup_changed.emit)
                 card_layout.addLayout(choices)
             content.addWidget(card)
+        overlay = QVBoxLayout()
+        overlay.setSpacing(4)
+        content.addLayout(overlay)
+        overlay.addWidget(QLabel(self.l.t('Overlay settings')))
+        self.reset_settings = QPushButton(self.l.t('Reset settings'))
+        self.reset_settings.setToolTip(self.l.t('Restore every overlay setting to its default.'))
+        self.reset_settings.clicked.connect(self.confirm_overlay_reset)
+        overlay.addWidget(self.reset_settings, alignment=Qt.AlignLeading)
         self.update_watch(self.watch_enabled)
         self.setFixedSize(max(454, root.minimumSize().width()), root.sizeHint().height())
+
+    def confirm_overlay_reset(self):
+        box = QMessageBox(self)
+        box.setWindowTitle(self.l.t('Reset overlay settings?'))
+        box.setText(self.l.t('Restore the default overlay appearance, position, and behavior?'))
+        reset = box.addButton(self.l.t('Reset settings'), QMessageBox.AcceptRole)
+        cancel = box.addButton(self.l.t('Cancel'), QMessageBox.RejectRole)
+        box.setDefaultButton(cancel)
+        box.exec()
+        if box.clickedButton() is reset:
+            self.reset_overlay_requested.emit()
 
     def set_pinned(self, pinned):
         shown = self.isVisible()

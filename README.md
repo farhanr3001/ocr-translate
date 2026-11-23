@@ -72,7 +72,7 @@ dragging, maximize/restore, minimize and close-to-tray controls, plus resizing f
 | Alt+Q | Select text to translate, or dismiss the current Quick Translate result |
 | Alt+H | Hide current translations and cancel pending results |
 
-All shortcuts can be changed. Click a field, press the combination, then Apply. Windows and
+All shortcuts can be changed. Click a field and press the combination. Windows and
 other applications can reserve combinations; Arabic Lens checks availability and retains
 the previous bindings on conflict. Win, Ctrl, Alt and Shift are supported with letters,
 numbers and function keys. Selection stays within one display per capture.
@@ -81,22 +81,26 @@ Arabic Lens opens to the compact **toolbox**. Its two buttons start or stop Watc
 Mode and select text. Choose how Watch starts below
 its Start button. Use the pin to keep the toolbox above other windows, or the expand
 icon to open full settings. The settings title bar has a return-to-toolbox button.
+The toolbox stays open when you use Quick Translate or Watch Mode. **Reset settings**
+restores all overlay defaults after confirmation.
 Double-click the tray icon to reopen the toolbox after closing it. Right-click for
 translation actions, settings, pause, history or exit. Save up to 20 regions from
 **Ignore List → Saved regions**. Saved rectangles use screen positions; recapture
 them if the source moves or the display layout changes.
 
 **Ignore List → Block apps → Add app** lets you choose an open app or an installed
-desktop app, search the list, or browse to an executable. Click **Apply changes** to
-save. Watch Mode skips capture, OCR and translation for blocked executables, and
+desktop app, search the list, or browse to an executable. Watch Mode skips capture,
+OCR and translation for blocked executables, and
 clears old overlays when you switch into one. Quick Translate remains available
 manually. Matching uses the executable path, regardless of the window title.
 App discovery runs only while using the picker; it never launches listed apps.
 
 Scrolling over a settings field does not change its value; use the field, arrows,
 slider or dropdown explicitly. The **Overlay** preview stays beside the scrolling
-controls. Changes save automatically and apply to new translations. **Restore overlay
-defaults** resets the appearance and behaviour together.
+controls. Settings save automatically. Overlay changes also update translations
+already on screen. **Restore overlay defaults** resets the appearance and behaviour
+together. If Windows cannot exclude a particular overlay from screen capture, that
+overlay goes beside the source so Watch Mode can still read the original text.
 Press **Alt+Q** again while a Quick Translate result is visible to dismiss it, then
 press it once more to select a new area. This leaves existing Watch translations in place.
 Paragraph breaks and list rows are preserved. Quick Capture waits briefly for the selection window to release focus; manual

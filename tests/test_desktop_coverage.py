@@ -190,8 +190,9 @@ def test_ignore_table_bilingual_search_edit_storage_and_toggle(tmp_path):
         window.search_ignore('مخصص')
         assert table.topLevelItem(0).isHidden() and not table.topLevelItem(table.topLevelItemCount()-1).isHidden()
         values=[];window.apply_requested.connect(values.append)
-        window.fields['show_translation_boxes'].setChecked(True);window.apply()
-        assert values[0]['show_translation_boxes'] and values[0]['ignored_translations']['Custom label']=='نص مخصص'
+        window.fields['show_translation_boxes'].setChecked(True)
+        assert values == [{'show_translation_boxes': True}]
+        assert window.ignore_values()['ignored_translations']['Custom label'] == 'نص مخصص'
         settings.show_translation_boxes=True;service.save()
         assert SettingsService(tmp_path).settings.show_translation_boxes
     finally:

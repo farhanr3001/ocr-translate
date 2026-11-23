@@ -90,7 +90,7 @@ class Application:
         self.overlay_save_timer = QTimer(self.qt)
         self.overlay_save_timer.setSingleShot(True)
         self.overlay_save_timer.setInterval(250)
-        self.overlay_save_timer.timeout.connect(self.service.save)
+        self.overlay_save_timer.timeout.connect(self.save_overlay)
         self.window.action_requested.connect(self.action)
         self.window.watch_startup_changed.connect(self.set_watch_startup)
         self.window.toolbox_requested.connect(self.show_toolbox)
@@ -99,6 +99,7 @@ class Application:
         self.toolbox.watch_startup_changed.connect(self.set_watch_startup)
         self.toolbox.settings_requested.connect(self.show_settings)
         self.toolbox.pin_changed.connect(self.pin_toolbox)
+        self.toolbox.reset_overlay_requested.connect(self.reset_overlay)
         self.overlays = OverlayManager(self.settings, self.report, self.forget_overlay)
         from .progress import TranslationProgress
         self.progress = TranslationProgress(self.settings, self.l)
@@ -131,7 +132,7 @@ class Application:
         self.engine.removed.connect(self.source_monitor.forget)
         self.engine.cleared.connect(self.clear_overlays)
         self.engine.watch_cleared.connect(self.clear_watch_overlays)
-        self.engine.own_overlays = self.overlays.capture_visible_rects
+        self.engine.own_overlays = lambda: self.overlays.capture_visible_rects() + self.toolbox.capture_bounds
         self.engine.watch_changed.connect(self.watch_changed)
         self.engine.status.connect(self.on_status)
         self.engine.tested.connect(self.tested)
@@ -236,9 +237,6 @@ class Application:
 
     def hide_controls(self):
         self.window.hide()
-        toolbox = getattr(self, 'toolbox', None)
-        if toolbox:
-            toolbox.hide()
 
     def restore_controls(self):
         if getattr(self, 'control_view', 'settings') == 'toolbox':
@@ -251,9 +249,20 @@ class Application:
         self.service.save()
 
     def edit_overlay(self, values):
+        if all(getattr(self.settings.overlay, name) == value for name, value in values.items()):
+            return
         for name, value in values.items():
             setattr(self.settings.overlay, name, value)
         self.overlay_save_timer.start()
+
+    def save_overlay(self):
+        self.service.save()
+        self.overlays.refresh_appearance()
+
+    def reset_overlay(self):
+        self.window.restore_overlay()
+        self.overlay_save_timer.stop()
+        self.save_overlay()
 
     def check_updates(self, manual=False):
         """Check a public release without making the GUI or gameplay wait."""
@@ -807,8 +816,6 @@ class Application:
 
     def apply(self, values):
         candidate = copy.deepcopy(self.settings)
-        page = self.window.stack.currentIndex()
-        changed_language = values.get("language") != self.settings.language
         try:
             for key, value in values.items():
                 if key == "overlay":
@@ -817,50 +824,55 @@ class Application:
                 elif key in candidate.__dataclass_fields__:
                     setattr(candidate, key, value)
             candidate.overlay.persistence = True
-            if candidate.endpoint and candidate.provider != 'Built-in offline':
+            if 'endpoint' in values and candidate.endpoint and candidate.provider != 'Built-in offline':
                 validate_endpoint(candidate.endpoint)
-            if values["remove_secret"]:
+            if values.get("remove_secret"):
                 candidate.api_key = ""
-            elif values["secret"]:
+            elif values.get("secret"):
                 candidate.api_key = protect_secret(values["secret"])
             if candidate.shortcuts != self.settings.shortcuts:
                 self.hotkeys.register(candidate.shortcuts, strict=True)
-            elif not self.hotkeys.registered:
-                self.hotkeys.register(candidate.shortcuts)
             if candidate.start_windows != self.settings.start_windows:
                 set_startup(candidate.start_windows)
-        except (ValueError, OSError, TranslationError) as exc:
-            self.report("Shortcut unavailable. Choose another combination." if isinstance(exc, ValueError) else "Connect a translation provider in Settings.")
+        except (ValueError, OSError, TranslationError):
+            if 'shortcuts' in values:
+                self.window.restore_shortcuts()
+                self.report("Shortcut unavailable. Choose another combination.")
+            else:
+                self.report("Setting could not be saved.")
             return
-        was_watch = self.engine.watch
-        blocks_changed = candidate.blocked_apps != self.settings.blocked_apps
-        provider_changed = candidate.provider != self.settings.provider
-        self.settings.__dict__.update(candidate.__dict__)
-        self.settings.first_run = False
-        self.service.save()
-        if provider_changed and self.settings.provider == 'Built-in offline':
-            self.engine.prepare()
-        if self.settings.auto_check_updates and not self.qt.property('smokeTest'):
-            if not self.update_timer.isActive():
-                self.update_timer.start()
-                QTimer.singleShot(0, self.check_updates)
-        else:
-            self.update_timer.stop()
-        self.store.prune()
-        self.engine.hide()
-        if blocks_changed:
-            self.overlays.clear(immediate=True)
-            self.source_monitor.clear()
-            self.engine.invalidate_source()
-        if was_watch:
-            self.engine.set_watch(True)
-        if not self.settings.debug:
-            self.clear_debug()
-        self.window.rebuild(page)
-        self.toolbox.build()
-        self.rebuild_tray()
-        self.report("Changes saved")
-        if values["test"]:
+        changed = {key for key, value in vars(candidate).items() if value != getattr(self.settings, key)}
+        if changed:
+            self.settings.__dict__.update(candidate.__dict__)
+            self.settings.first_run = False
+            self.service.save()
+            if 'provider' in changed and self.settings.provider == 'Built-in offline':
+                self.engine.prepare()
+            if 'auto_check_updates' in changed:
+                if self.settings.auto_check_updates and not self.qt.property('smokeTest'):
+                    self.update_timer.start()
+                    QTimer.singleShot(0, self.check_updates)
+                else:
+                    self.update_timer.stop()
+            if changed & {'history_enabled', 'history_limit', 'cache_enabled'}:
+                self.store.prune()
+                self.window.refresh_history()
+            if changed & {'provider', 'endpoint', 'model', 'azure_region', 'api_key', 'blocked_apps',
+                          'active_only', 'filter_ui', 'ignored'} and self.engine.watch:
+                self.engine.set_watch(True)
+            if 'show_translation_boxes' in changed and not self.settings.show_translation_boxes:
+                self.progress.clear()
+            if 'debug' in changed and not self.settings.debug:
+                self.clear_debug()
+            if 'overlay' in changed:
+                self.overlays.refresh_appearance()
+            if 'language' in changed:
+                self.window.rebuild(self.window.stack.currentIndex())
+            if changed & {'language', 'shortcuts'}:
+                self.toolbox.build()
+                self.rebuild_tray()
+            self.report("Changes saved")
+        if values.get("test"):
             self.report("Translating…")
             self.window.translation_feedback.setText(self.l.t("Translating…"))
             self.engine.test_provider(values.get('test_text') or None)

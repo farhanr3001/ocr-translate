@@ -23,10 +23,10 @@ class TitleBar(QFrame):
         row.addStretch()
         self.row = row
         self.maximize = None
+        self.minimize = self.control('−', translate('Minimize'), window.showMinimized)
+        row.addWidget(self.minimize)
         if not compact:
-            self.minimize = self.control('−', translate('Minimize'), window.showMinimized)
             self.maximize = self.control('□', translate('Maximize or restore'), self.toggle_maximized)
-            row.addWidget(self.minimize)
             row.addWidget(self.maximize)
         self.close_button = self.control('×', translate('Close to tray'), window.close)
         self.close_button.setObjectName('windowClose')
