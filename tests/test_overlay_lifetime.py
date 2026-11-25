@@ -107,3 +107,33 @@ def test_overlay_still_shows_when_capture_exclusion_is_refused(monkeypatch):
     finally:
         manager.clear(immediate=True)
         qt.processEvents()
+
+
+def test_replace_covers_text_inside_the_taskbar_in_place(monkeypatch):
+    """Replace may use the whole screen: text in the taskbar (e.g. "Search")
+    must be covered where it is, not pushed above the taskbar. Beside-the-text
+    placement still keeps clear of the taskbar."""
+    from arabic_lens.overlay import logical_to_physical
+    qt, manager = _manager(monkeypatch)
+    screen = qt.primaryScreen()
+    whole, usable = screen.geometry(), screen.availableGeometry()
+    monkeypatch.setattr(type(screen), 'availableGeometry',
+                        lambda self: type(usable)(whole.x(), whole.y(), whole.width(), whole.height() - 48))
+    source = Rect(whole.x() + 900, whole.bottom() - 30, 70, 20)
+    physical = logical_to_physical(screen, source)
+    try:
+        result = Translation('manual', 'Search', 'البحث', physical)
+        result.line_height = physical.h
+        manager.show(result)
+        qt.processEvents()
+        overlay = manager.windows['manual']
+        assert overlay.y() <= source.y and overlay.y() + overlay.height() >= source.bottom
+        assert abs(overlay.x() - source.x) <= 6
+        manager.settings.overlay.position = 'Below'
+        manager.show(Translation('manual:1', 'Search', 'البحث', physical))
+        qt.processEvents()
+        beside = manager.windows['manual:1']
+        assert beside.y() + beside.height() <= whole.height() - 48
+    finally:
+        manager.clear(immediate=True)
+        qt.processEvents()

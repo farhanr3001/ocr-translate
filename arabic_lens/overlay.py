@@ -500,6 +500,11 @@ class OverlayManager:
         screen, source = physical_to_logical(result.rect)
         available = screen.availableGeometry()
         bounds = Rect(available.x(), available.y(), available.width(), available.height())
+        # Replace covers the source wherever it is, including text inside the
+        # taskbar or another reserved edge, so it may use the whole screen.
+        # Beside-the-text placement still keeps clear of the taskbar.
+        whole = screen.geometry()
+        cover = Rect(whole.x(), whole.y(), whole.width(), whole.height())
         from dataclasses import replace
         from .appearance import effective_appearance
         a = effective_appearance(self.settings.overlay, result.style_hint)
@@ -515,6 +520,17 @@ class OverlayManager:
             overlay.capture_excluded = exclude_capture(overlay)
             if not overlay.capture_excluded:
                 a = overlay.appearance = replace(a, position='Below')
+                if not getattr(self, '_exclusion_logged', False):
+                    # Recorded once in app.log so a remote report can be diagnosed.
+                    import ctypes
+                    import logging
+                    import sys
+                    version = sys.getwindowsversion()
+                    logging.getLogger('arabic_lens').warning(
+                        'Capture exclusion refused (Windows error %s, Windows %s.%s build %s); '
+                        'Replace overlays are placed beside text', ctypes.get_last_error(),
+                        version.major, version.minor, version.build)
+                    self._exclusion_logged = True
                 self.report("Capture exclusion is unavailable; overlays are placed beside text.")
         avoid = [physical_to_logical(r)[1] for r in result.avoid_regions]
         if a.position == 'Replace':
@@ -548,13 +564,13 @@ class OverlayManager:
                 top = source.y - overlay.fit_margin
                 left = source.x - overlay.fit_margin
                 width_limit = right_limit - left - 1 if right_limit is not None else overlay.width() + 80
-                width_limit = min(width_limit, bounds.right - 10 - left)
+                width_limit = min(width_limit, cover.right - 10 - left)
                 overlay.limit_height(bottom - top - 1, max(overlay.width(), width_limit))
         occupied = [Rect(w.x(), w.y(), w.width(), w.height()) for w in self.windows.values() if w.isVisible() and not w.closing]
         occupied += avoid
         if a.position == 'Replace':
-            rect = Rect(max(bounds.x, min(source.x - overlay.fit_margin, bounds.right - overlay.width())),
-                max(bounds.y, min(source.y - overlay.fit_margin, bounds.bottom - overlay.height())), overlay.width(), overlay.height())
+            rect = Rect(max(cover.x, min(source.x - overlay.fit_margin, cover.right - overlay.width())),
+                max(cover.y, min(source.y - overlay.fit_margin, cover.bottom - overlay.height())), overlay.width(), overlay.height())
         elif replacing and not restyle and a.position == previous.appearance.position:
             # Keep a growing line's subtitle where the reader already looks.
             rect = Rect(previous.x(), previous.y(), overlay.width(), overlay.height())
@@ -596,7 +612,7 @@ class OverlayManager:
             room = max(source.h, overlay_top - source.y)
             extra = max(0, overlay.width() - source.w)
             overlay._fit_pitched_line(source, extra, overlay.document.defaultFont().pixelSize(), room)
-            bounds = screen.availableGeometry()
+            bounds = screen.geometry()  # Covering overlays may sit over the taskbar.
             overlay.move(max(bounds.left(), min(source.x, bounds.right() + 1 - overlay.width())), source.y)
 
     def _expired(self, key, overlay):
