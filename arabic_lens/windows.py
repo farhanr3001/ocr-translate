@@ -251,3 +251,144 @@ class PreviewCaptureService(CaptureService):
             raise OSError('Screen capture unavailable')
         gdi32.GdiFlush()
         return self.buffer
+
+
+user32.GetTopWindow.argtypes = [W.HWND]
+user32.GetTopWindow.restype = W.HWND
+user32.GetWindow.argtypes = [W.HWND, W.UINT]
+user32.GetWindow.restype = W.HWND
+user32.PrintWindow.argtypes = [W.HWND, W.HDC, W.UINT]
+user32.PrintWindow.restype = W.BOOL
+user32.GetWindowLongW.argtypes = [W.HWND, C.c_int]
+user32.GetWindowLongW.restype = C.c_long
+try:
+    dwmapi = C.WinDLL("dwmapi")
+    dwmapi.DwmGetWindowAttribute.argtypes = [W.HWND, W.DWORD, C.c_void_p, W.DWORD]
+except OSError:
+    dwmapi = None
+
+
+def _window_beneath(x, y):
+    """Topmost visible window of another process containing a physical point.
+
+    Skips our own windows and click-through (input-transparent) windows, which
+    is what lies under one of our capture-visible overlays.
+    """
+    own = os.getpid()
+    hwnd = user32.GetTopWindow(None)
+    rect, pid, cloaked = W.RECT(), W.DWORD(), C.c_int()
+    for _ in range(4096):
+        if not hwnd:
+            return None
+        if user32.IsWindowVisible(hwnd) and not user32.IsIconic(hwnd):
+            user32.GetWindowThreadProcessId(hwnd, C.byref(pid))
+            style = user32.GetWindowLongW(hwnd, -20)
+            if pid.value != own and not style & 0x20 and user32.GetWindowRect(hwnd, C.byref(rect)) \
+                    and rect.left <= x < rect.right and rect.top <= y < rect.bottom:
+                cloaked.value = 0
+                if dwmapi is not None:
+                    dwmapi.DwmGetWindowAttribute(hwnd, 14, C.byref(cloaked), 4)
+                if not cloaked.value:
+                    return hwnd, Rect(rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top)
+        hwnd = user32.GetWindow(hwnd, 2)  # GW_HWNDNEXT
+    return None
+
+
+class WindowBeneathCapture:
+    """Pixels of the application window beneath our own overlays.
+
+    Used only where Windows refuses to exclude overlays from screen capture
+    (seen on Windows 11 build 22000). The window renders itself without the
+    overlays on top (PrintWindow with full content), so text hidden under an
+    overlay can still be followed: it updates and disappears normally. One
+    render per window is reused briefly. Processing thread only.
+    """
+    max_age = .2
+
+    def __init__(self):
+        self.screen = user32.GetDC(None)
+        self.cache = {}
+
+    def pixels(self, rect, depth=0):
+        """BGRA pixels for an absolute physical rect, or None when unavailable.
+
+        A rect crossing a window edge is assembled from each window beneath it.
+        """
+        found = _window_beneath(rect.x + rect.w // 2, rect.y + rect.h // 2)
+        if not found:
+            return None
+        hwnd, frame = found
+        inside = rect.intersect(frame)
+        if not inside.w or not inside.h:
+            return None
+        image = self._window_pixels(hwnd, frame)
+        if image is None:
+            return None
+        x, y = inside.x - frame.x, inside.y - frame.y
+        part = image[y:y + inside.h, x:x + inside.w]
+        if (inside.w, inside.h) == (rect.w, rect.h):
+            return part
+        if depth >= 3:
+            return None
+        result = np.zeros((rect.h, rect.w, 4), np.uint8)
+        result[inside.y - rect.y:inside.bottom - rect.y, inside.x - rect.x:inside.right - rect.x] = part
+        # The parts of rect outside this window: above, below, left, right.
+        rest = (Rect(rect.x, rect.y, rect.w, inside.y - rect.y),
+                Rect(rect.x, inside.bottom, rect.w, rect.bottom - inside.bottom),
+                Rect(rect.x, inside.y, inside.x - rect.x, inside.h),
+                Rect(inside.right, inside.y, rect.right - inside.right, inside.h))
+        for piece in rest:
+            if piece.w > 0 and piece.h > 0:
+                pixels = self.pixels(piece, depth + 1)
+                if pixels is None:
+                    return None
+                result[piece.y - rect.y:piece.bottom - rect.y, piece.x - rect.x:piece.right - rect.x] = pixels
+        return result
+
+    def _window_pixels(self, hwnd, frame):
+        import time
+        if frame.w * frame.h > 50_000_000:
+            return None
+        key = int(hwnd)
+        cached = self.cache.get(key)
+        now = time.monotonic()
+        if not cached or now - cached[0] > self.max_age or cached[1] != frame:
+            # GPU-presented windows occasionally render one all-black frame.
+            image = self._render(hwnd, frame)
+            if image is None:
+                image = self._render(hwnd, frame)
+            if image is None:
+                return None
+            if len(self.cache) > 8:
+                self.cache.clear()
+            cached = self.cache[key] = (now, frame, image)
+        return cached[2]
+
+    def _render(self, hwnd, frame):
+        dc = gdi32.CreateCompatibleDC(self.screen)
+        info = BitmapInfo()
+        info.size, info.width, info.height = 40, frame.w, -frame.h
+        info.planes, info.bits = 1, 32
+        bits = C.c_void_p()
+        bitmap = gdi32.CreateDIBSection(self.screen, C.byref(info), 0, C.byref(bits), None, 0)
+        try:
+            if not dc or not bitmap or not bits.value:
+                return None
+            old = gdi32.SelectObject(dc, bitmap)
+            ok = user32.PrintWindow(hwnd, dc, 2)  # PW_RENDERFULLCONTENT
+            gdi32.GdiFlush()
+            image = None
+            if ok:
+                image = np.ctypeslib.as_array((C.c_ubyte * (frame.w * frame.h * 4)).from_address(bits.value)).reshape(frame.h, frame.w, 4).copy()
+                if not image[::8, ::8, :3].any():
+                    image = None  # Some windows (exclusive/protected video) render black.
+            gdi32.SelectObject(dc, old)
+            return image
+        finally:
+            if bitmap:
+                gdi32.DeleteObject(bitmap)
+            if dc:
+                gdi32.DeleteDC(dc)
+
+    def close(self):
+        user32.ReleaseDC(None, self.screen)

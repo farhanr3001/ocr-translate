@@ -19,7 +19,7 @@ class OverlaySettings:
     font_size: int = 23
     text_color: str = "#ffffff"
     background_color: str = "#10151d"
-    background_opacity: int = 78
+    background_opacity: int = 100
     opacity: int = 100
     padding: int = 14
     radius: int = 12
@@ -39,7 +39,7 @@ class OverlaySettings:
 
 @dataclass
 class Settings:
-    schema_version: int = 8
+    schema_version: int = 9
     language: str = "en"
     first_run: bool = True
     start_minimized: bool = False
@@ -157,6 +157,12 @@ class SettingsService:
                 data['schema_version'] = 7
             if data.get('schema_version', 7) < 8:
                 data['schema_version'] = 8
+            if data.get('schema_version', 8) < 9:
+                # Overlay backgrounds are solid by default so the English
+                # never shows through. A deliberately chosen value is kept.
+                if overlay.get('background_opacity', 78) == 78:
+                    overlay['background_opacity'] = 100
+                data['schema_version'] = 9
             self.settings = Settings(**{k: v for k, v in data.items() if k in Settings.__dataclass_fields__})
             self.settings.overlay = OverlaySettings(**{k: v for k, v in overlay.items() if k in OverlaySettings.__dataclass_fields__})
             self.settings.overlay.persistence = True

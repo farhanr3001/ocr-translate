@@ -4,6 +4,9 @@ separate-process fixtures and check what the user would see.
 Usage: python tools/live_scenarios.py OUTDIR SCENARIO [SECONDS]
        python tools/live_scenarios.py OUTDIR all
 
+Set ARABIC_LENS_REFUSE_EXCLUSION=1 to behave like a PC whose Windows refuses
+overlay capture exclusion (Windows 11 build 22000), for parity comparisons.
+
 Each run writes OUTDIR/<scenario>/summary.json (events, overlay snapshots,
 final overlays) and prints PASS/FAIL lines for the scenario's expectations.
 These are developer checks on a real desktop; they briefly show windows.
@@ -413,6 +416,14 @@ def run(out, name, seconds=None):
             item.unlink()
     if callable(spec['setup']):
         spec['setup']()
+    if os.environ.get('ARABIC_LENS_REFUSE_EXCLUSION') == '1':
+        # Behave like Windows 11 build 22000: every capture-exclusion request
+        # is refused, so all of our windows are visible to screen capture.
+        import arabic_lens.progress as progress_module
+        import arabic_lens.selection as selection_module
+        import arabic_lens.windows as windows_module
+        for module in (overlay_module, progress_module, selection_module, windows_module):
+            setattr(module, 'exclude_capture', lambda widget: False)
     (out / 'script.json').write_text(json.dumps(spec['steps']))
     qt = QApplication.instance() or QApplication([])
     qt.setProperty('smokeTest', True)

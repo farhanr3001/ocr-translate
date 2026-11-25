@@ -2,7 +2,7 @@
 from PySide6.QtCore import Qt, QRect, QTimer
 from PySide6.QtGui import QPainter, QColor, QFont, QPen
 from PySide6.QtWidgets import QWidget
-from .overlay import physical_to_logical
+from .overlay import physical_to_logical, outline_capture_rects
 from .windows import exclude_capture, source_window_current
 
 
@@ -15,7 +15,13 @@ class ProgressSurface(QWidget):
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setAttribute(Qt.WA_ShowWithoutActivating)
         self.setGeometry(screen.geometry())
-        exclude_capture(self)
+        self.screen_ref = screen
+        self.capture_excluded = exclude_capture(self)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if not self.capture_excluded:
+            self.capture_excluded = exclude_capture(self)
 
     def paintEvent(self, event):
         p = QPainter(self)
@@ -39,6 +45,9 @@ class TranslationProgress:
     def __init__(self, settings, localization):
         self.settings, self.localization = settings, localization
         self.entries, self.windows = {}, {}
+        # Physical outline/badge rectangles visible to screen capture (only
+        # when Windows refuses exclusion). Read by the processing thread.
+        self.capture_rects = ()
         # Coalesce bursts from dense OCR into one paint without blocking input.
         self.timer = QTimer(); self.timer.setSingleShot(True)
         self.timer.timeout.connect(self.render)
@@ -86,6 +95,7 @@ class TranslationProgress:
         for window in self.windows.values():
             window.close(); window.deleteLater()
         self.windows.clear()
+        self.capture_rects = ()
 
     def render(self):
         if not self.settings.show_translation_boxes:
@@ -102,3 +112,5 @@ class TranslationProgress:
                 self.windows[screen] = ProgressSurface(screen)
             window = self.windows[screen]; window.items = items
             window.show(); window.update()
+        self.capture_rects = tuple(r for screen, window in self.windows.items() if not window.capture_excluded
+                                   for area, _, _ in window.items for r in outline_capture_rects(screen, area))

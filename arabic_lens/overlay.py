@@ -838,6 +838,24 @@ class OverlayInteraction(QWidget):
         self.dragging = False
 
 
+def outline_capture_rects(screen, area, label_height=20, label_width=80):
+    """Physical rectangles of a drawn outline (four edges) and its label above.
+
+    Full-screen outline surfaces that Windows refuses to exclude from capture
+    report these so the engine sees through them like translation overlays.
+    """
+    edges = (Rect(area.x - 3, area.y - 3, area.w + 6, 6), Rect(area.x - 3, area.bottom - 3, area.w + 6, 6),
+             Rect(area.x - 3, area.y - 3, 6, area.h + 6), Rect(area.right - 3, area.y - 3, 6, area.h + 6),
+             Rect(area.x - 3, area.y - label_height - 2, max(area.w, label_width) + 6, label_height + 2))
+    rects = []
+    for rect in edges:
+        try:
+            rects.append(logical_to_physical(screen, rect))
+        except KeyError:
+            pass
+    return rects
+
+
 class DiagnosticOverlay(QWidget):
     def __init__(self, screen, regions):
         super().__init__()
@@ -846,7 +864,11 @@ class DiagnosticOverlay(QWidget):
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setAttribute(Qt.WA_ShowWithoutActivating)
         self.setGeometry(screen.geometry())
-        exclude_capture(self)
+        self.capture_excluded = exclude_capture(self)
+        self.capture_rects = ()
+        if not self.capture_excluded:
+            self.capture_rects = tuple(r for _, rect, _ in regions
+                                       for r in outline_capture_rects(screen, rect, 18, 260))
 
     def paintEvent(self, event):
         p = QPainter(self)

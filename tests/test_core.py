@@ -147,3 +147,15 @@ def test_local_endpoint_and_hotkeys():
         parse_shortcut("Q")
     with pytest.raises(ValueError):
         parse_shortcut("Alt+F4")
+
+
+def test_overlay_backgrounds_become_solid_unless_chosen(tmp_path):
+    import json
+    from arabic_lens.config import SettingsService, Settings
+    assert Settings().overlay.background_opacity == 100
+    for saved, expected in ((78, 100), (54, 54), (None, 100)):
+        folder = tmp_path / str(saved)
+        folder.mkdir()
+        overlay = {} if saved is None else {'background_opacity': saved}
+        (folder / 'settings.json').write_text(json.dumps({'schema_version': 8, 'overlay': overlay}))
+        assert SettingsService(folder).settings.overlay.background_opacity == expected
