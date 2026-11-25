@@ -29,7 +29,7 @@ def effective_appearance(base, hint=None):
     mixed = [round(c * .18 + neutral * .82) for c in rgb]
     return replace(base, font='Segoe UI', text_color='#272c30' if light else '#ffffff',
         background_color='#' + ''.join(f'{c:02x}' for c in mixed),
-        background_opacity=100, shadow=not light, outline=0, border_width=0)
+        background_opacity=90, shadow=not light, outline=0, border_width=0)
 
 
 def sample_cell_style(image, block):

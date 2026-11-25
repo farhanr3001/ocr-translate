@@ -132,9 +132,7 @@ class Application:
         self.engine.removed.connect(self.source_monitor.forget)
         self.engine.cleared.connect(self.clear_overlays)
         self.engine.watch_cleared.connect(self.clear_watch_overlays)
-        self.debug_capture_rects = ()
-        self.engine.own_overlays = lambda: (self.overlays.capture_visible_rects() + self.toolbox.capture_bounds
-                                            + self.progress.capture_rects + self.debug_capture_rects)
+        self.engine.own_overlays = lambda: self.overlays.capture_visible_rects() + self.toolbox.capture_bounds
         self.engine.watch_changed.connect(self.watch_changed)
         self.engine.status.connect(self.on_status)
         self.engine.tested.connect(self.tested)
@@ -920,7 +918,6 @@ class Application:
                 window.close()
                 window.deleteLater()
             self.debug_windows.clear()
-            self.debug_capture_rects = ()
             grouped = {}
             for key, rect, revision in info["regions"]:
                 screen, logical = physical_to_logical(rect)
@@ -929,7 +926,6 @@ class Application:
                 window = DiagnosticOverlay(screen, regions)
                 window.show()
                 self.debug_windows.append(window)
-                self.debug_capture_rects += window.capture_rects
         else:
             if self.debug_text is None:
                 self.debug_text = QTextEdit()

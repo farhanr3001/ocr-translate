@@ -500,11 +500,6 @@ class OverlayManager:
         screen, source = physical_to_logical(result.rect)
         available = screen.availableGeometry()
         bounds = Rect(available.x(), available.y(), available.width(), available.height())
-        # Replace covers the source wherever it is, including text inside the
-        # taskbar or another reserved edge, so it may use the whole screen.
-        # Beside-the-text placement still keeps clear of the taskbar.
-        whole = screen.geometry()
-        cover = Rect(whole.x(), whole.y(), whole.width(), whole.height())
         from dataclasses import replace
         from .appearance import effective_appearance
         a = effective_appearance(self.settings.overlay, result.style_hint)
@@ -518,22 +513,9 @@ class OverlayManager:
             overlay.setWindowOpacity(0)
             overlay.show()
             overlay.capture_excluded = exclude_capture(overlay)
-            if not overlay.capture_excluded and not getattr(self, '_exclusion_logged', False):
-                # Some Windows builds (seen on 10.0.22000, error 8) refuse
-                # exclusion for translucent click-through windows. Replace
-                # still covers the text in place: the engine blanks our own
-                # capture-visible overlays out of its captures and treats the
-                # text beneath them as unknown, not gone. Logged once so a
-                # remote report can be diagnosed.
-                import ctypes
-                import logging
-                import sys
-                version = sys.getwindowsversion()
-                logging.getLogger('arabic_lens').warning(
-                    'Capture exclusion refused (Windows error %s, Windows %s.%s build %s); '
-                    'Replace overlays stay in place and are masked from capture', ctypes.get_last_error(),
-                    version.major, version.minor, version.build)
-                self._exclusion_logged = True
+            if not overlay.capture_excluded:
+                a = overlay.appearance = replace(a, position='Below')
+                self.report("Capture exclusion is unavailable; overlays are placed beside text.")
         avoid = [physical_to_logical(r)[1] for r in result.avoid_regions]
         if a.position == 'Replace':
             # Grow only into free space: never over a neighbouring value
@@ -566,13 +548,13 @@ class OverlayManager:
                 top = source.y - overlay.fit_margin
                 left = source.x - overlay.fit_margin
                 width_limit = right_limit - left - 1 if right_limit is not None else overlay.width() + 80
-                width_limit = min(width_limit, cover.right - 10 - left)
+                width_limit = min(width_limit, bounds.right - 10 - left)
                 overlay.limit_height(bottom - top - 1, max(overlay.width(), width_limit))
         occupied = [Rect(w.x(), w.y(), w.width(), w.height()) for w in self.windows.values() if w.isVisible() and not w.closing]
         occupied += avoid
         if a.position == 'Replace':
-            rect = Rect(max(cover.x, min(source.x - overlay.fit_margin, cover.right - overlay.width())),
-                max(cover.y, min(source.y - overlay.fit_margin, cover.bottom - overlay.height())), overlay.width(), overlay.height())
+            rect = Rect(max(bounds.x, min(source.x - overlay.fit_margin, bounds.right - overlay.width())),
+                max(bounds.y, min(source.y - overlay.fit_margin, bounds.bottom - overlay.height())), overlay.width(), overlay.height())
         elif replacing and not restyle and a.position == previous.appearance.position:
             # Keep a growing line's subtitle where the reader already looks.
             rect = Rect(previous.x(), previous.y(), overlay.width(), overlay.height())
@@ -614,7 +596,7 @@ class OverlayManager:
             room = max(source.h, overlay_top - source.y)
             extra = max(0, overlay.width() - source.w)
             overlay._fit_pitched_line(source, extra, overlay.document.defaultFont().pixelSize(), room)
-            bounds = screen.geometry()  # Covering overlays may sit over the taskbar.
+            bounds = screen.availableGeometry()
             overlay.move(max(bounds.left(), min(source.x, bounds.right() + 1 - overlay.width())), source.y)
 
     def _expired(self, key, overlay):
@@ -838,24 +820,6 @@ class OverlayInteraction(QWidget):
         self.dragging = False
 
 
-def outline_capture_rects(screen, area, label_height=20, label_width=80):
-    """Physical rectangles of a drawn outline (four edges) and its label above.
-
-    Full-screen outline surfaces that Windows refuses to exclude from capture
-    report these so the engine sees through them like translation overlays.
-    """
-    edges = (Rect(area.x - 3, area.y - 3, area.w + 6, 6), Rect(area.x - 3, area.bottom - 3, area.w + 6, 6),
-             Rect(area.x - 3, area.y - 3, 6, area.h + 6), Rect(area.right - 3, area.y - 3, 6, area.h + 6),
-             Rect(area.x - 3, area.y - label_height - 2, max(area.w, label_width) + 6, label_height + 2))
-    rects = []
-    for rect in edges:
-        try:
-            rects.append(logical_to_physical(screen, rect))
-        except KeyError:
-            pass
-    return rects
-
-
 class DiagnosticOverlay(QWidget):
     def __init__(self, screen, regions):
         super().__init__()
@@ -864,11 +828,7 @@ class DiagnosticOverlay(QWidget):
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setAttribute(Qt.WA_ShowWithoutActivating)
         self.setGeometry(screen.geometry())
-        self.capture_excluded = exclude_capture(self)
-        self.capture_rects = ()
-        if not self.capture_excluded:
-            self.capture_rects = tuple(r for _, rect, _ in regions
-                                       for r in outline_capture_rects(screen, rect, 18, 260))
+        exclude_capture(self)
 
     def paintEvent(self, event):
         p = QPainter(self)

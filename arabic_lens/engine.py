@@ -282,80 +282,28 @@ def line_strips(rects, bounds):
     return [Rect(bounds.x, area.y, bounds.w, area.h).intersect(bounds) for area in rects]
 
 
-def fill_own_overlays(image, bounds, rects, beneath=None):
-    """Remove our own visible overlays from a capture of `bounds`.
+def fill_own_overlays(image, bounds, rects):
+    """Blank our own visible overlays out of a capture of `bounds`.
 
-    Used only when Windows refuses capture exclusion. Where `beneath` can
-    supply the application window's own pixels under an overlay, and they
-    agree with the live screen in a ring around it, the overlay is replaced by
-    what it covers, so that text is followed normally (updated, retired).
-    Otherwise the overlay is blanked and returned as protected: text there is
-    unknown, not gone. Protected rectangles are relative to `bounds`
-    (full-resolution coordinates).
+    Used only when Windows refuses capture exclusion. Returns the protected
+    rectangles relative to `bounds` (full-resolution coordinates).
     """
     if not rects:
         return []
-    import numpy as np
     h, w = image.shape[:2]
     scale_x, scale_y = w / max(1, bounds.w), h / max(1, bounds.h)
-    original = image.copy() if beneath is not None else image
     fill = image.reshape(-1, image.shape[2]).mean(axis=0).astype(image.dtype)
-
-    def box(r):
-        relative = Rect(r.x - bounds.x, r.y - bounds.y, r.w, r.h)
-        return (max(0, int(relative.x * scale_x)), max(0, int(relative.y * scale_y)),
-                min(w, math.ceil(relative.right * scale_x)), min(h, math.ceil(relative.bottom * scale_y)))
-
-    covered = [r.intersect(bounds) for r in rects]
     protected = []
-    for inter in covered:
+    for rect in rects:
+        inter = rect.intersect(bounds)
         if not inter.w or not inter.h:
             continue
-        x0, y0, x1, y1 = box(inter)
-        if x1 <= x0 or y1 <= y0:
-            continue
-        if beneath is not None and _fill_from_window(image, original, bounds, inter, covered, box, beneath):
-            continue
-        protected.append(Rect(inter.x - bounds.x, inter.y - bounds.y, inter.w, inter.h))
-        image[y0:y1, x0:x1] = fill
+        relative = Rect(inter.x - bounds.x, inter.y - bounds.y, inter.w, inter.h)
+        protected.append(relative)
+        x0, y0 = int(relative.x * scale_x), int(relative.y * scale_y)
+        x1, y1 = math.ceil(relative.right * scale_x), math.ceil(relative.bottom * scale_y)
+        image[max(0, y0):min(h, y1), max(0, x0):min(w, x1)] = fill
     return protected
-
-
-def _fill_from_window(image, original, bounds, inter, covered, box, beneath):
-    """Paste the window's pixels under one overlay if they match the screen."""
-    import cv2
-    import numpy as np
-    grown = Rect(inter.x - 10, inter.y - 10, inter.w + 20, inter.h + 20).intersect(bounds)
-    try:
-        source = beneath(grown)
-    except Exception:
-        return False
-    if source is None or source.size == 0:
-        return False
-    gx0, gy0, gx1, gy1 = box(grown)
-    if gx1 - gx0 < 2 or gy1 - gy0 < 2:
-        return False
-    if (gx1 - gx0, gy1 - gy0) != (source.shape[1], source.shape[0]):
-        source = cv2.resize(source, (gx1 - gx0, gy1 - gy0), interpolation=cv2.INTER_AREA)
-    source = source[..., :image.shape[2]]
-    # Ring: the grown area minus every overlay, compared with the live screen.
-    ring = np.ones((gy1 - gy0, gx1 - gx0), bool)
-    for other in covered:
-        if other.w and other.h:
-            ox0, oy0, ox1, oy1 = box(other)
-            ring[max(0, oy0 - gy0):max(0, oy1 - gy0), max(0, ox0 - gx0):max(0, ox1 - gx0)] = False
-    if ring.sum() < 40:
-        return False
-    screen = original[gy0:gy1, gx0:gx1, :3].astype(np.int16)
-    window = source[..., :3].astype(np.int16)
-    if float(np.abs(screen - window)[ring].mean()) > 10:
-        return False  # Not what is on screen (other window, stale or black render).
-    x0, y0, x1, y1 = box(inter)
-    inner = source[y0 - gy0:y1 - gy0, x0 - gx0:x1 - gx0]
-    if inner.size == 0:
-        return False
-    image[y0:y1, x0:x1] = inner
-    return True
 
 
 class Engine(QObject):
@@ -383,9 +331,6 @@ class Engine(QObject):
         # Physical rectangles of our overlays that screen capture can see
         # (only when Windows refuses capture exclusion). Set by the app.
         self.own_overlays = lambda: ()
-        # Renders the window beneath capture-visible overlays (created lazily
-        # on the processing thread, only when overlays are capture-visible).
-        self.window_beneath = None
         self.watch = False
         self.loop = asyncio.new_event_loop()
         self.ready = threading.Event()
@@ -645,10 +590,7 @@ class Engine(QObject):
         rects = tuple(self.own_overlays() or ())
         if not rects:
             return image, []
-        if self.window_beneath is None:
-            from .windows import WindowBeneathCapture
-            self.window_beneath = WindowBeneathCapture()
-        return image, fill_own_overlays(image, bounds, rects, self.window_beneath.pixels)
+        return image, fill_own_overlays(image, bounds, rects)
 
     async def _scan_ocr_zone(self, index, bounds, hwnd, title, np, started,
             preview=None, core=None, multiple=None):

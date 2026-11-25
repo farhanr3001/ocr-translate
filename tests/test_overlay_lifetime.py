@@ -97,49 +97,13 @@ def test_overlay_still_shows_when_capture_exclusion_is_refused(monkeypatch):
 
     qt, manager = _manager(monkeypatch)
     monkeypatch.setattr(overlay_module, 'exclude_capture', lambda widget: False)
-    from arabic_lens.overlay import physical_to_logical
-    result = Translation('manual', 'Hello', 'مرحبا', Rect(100, 100, 240, 45))
+    messages = []
+    manager.report = messages.append
     try:
-        manager.show(result)
+        manager.show(Translation('manual', 'Hello', 'مرحبا', Rect(100, 100, 240, 45)))
         qt.processEvents()
-        overlay = manager.windows['manual']
-        assert overlay.isVisible()
-        # Still covers the English in place (seen on Windows 10.0.22000, which
-        # refuses exclusion for these windows); the engine masks it instead.
-        assert overlay.appearance.position == 'Replace'
-        _, source = physical_to_logical(result.rect)
-        assert Rect(overlay.x(), overlay.y(), overlay.width(), overlay.height()).overlap(source) > 0
-        assert manager.capture_visible_rects()
-    finally:
-        manager.clear(immediate=True)
-        qt.processEvents()
-
-
-def test_replace_covers_text_inside_the_taskbar_in_place(monkeypatch):
-    """Replace may use the whole screen: text in the taskbar (e.g. "Search")
-    must be covered where it is, not pushed above the taskbar. Beside-the-text
-    placement still keeps clear of the taskbar."""
-    from arabic_lens.overlay import logical_to_physical
-    qt, manager = _manager(monkeypatch)
-    screen = qt.primaryScreen()
-    whole, usable = screen.geometry(), screen.availableGeometry()
-    monkeypatch.setattr(type(screen), 'availableGeometry',
-                        lambda self: type(usable)(whole.x(), whole.y(), whole.width(), whole.height() - 48))
-    source = Rect(whole.x() + 900, whole.bottom() - 30, 70, 20)
-    physical = logical_to_physical(screen, source)
-    try:
-        result = Translation('manual', 'Search', 'البحث', physical)
-        result.line_height = physical.h
-        manager.show(result)
-        qt.processEvents()
-        overlay = manager.windows['manual']
-        assert overlay.y() <= source.y and overlay.y() + overlay.height() >= source.bottom
-        assert abs(overlay.x() - source.x) <= 6
-        manager.settings.overlay.position = 'Below'
-        manager.show(Translation('manual:1', 'Search', 'البحث', physical))
-        qt.processEvents()
-        beside = manager.windows['manual:1']
-        assert beside.y() + beside.height() <= whole.height() - 48
+        assert 'manual' in manager.windows and manager.windows['manual'].isVisible()
+        assert messages
     finally:
         manager.clear(immediate=True)
         qt.processEvents()
