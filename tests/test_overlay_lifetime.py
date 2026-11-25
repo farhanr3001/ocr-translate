@@ -97,13 +97,19 @@ def test_overlay_still_shows_when_capture_exclusion_is_refused(monkeypatch):
 
     qt, manager = _manager(monkeypatch)
     monkeypatch.setattr(overlay_module, 'exclude_capture', lambda widget: False)
-    messages = []
-    manager.report = messages.append
+    from arabic_lens.overlay import physical_to_logical
+    result = Translation('manual', 'Hello', 'مرحبا', Rect(100, 100, 240, 45))
     try:
-        manager.show(Translation('manual', 'Hello', 'مرحبا', Rect(100, 100, 240, 45)))
+        manager.show(result)
         qt.processEvents()
-        assert 'manual' in manager.windows and manager.windows['manual'].isVisible()
-        assert messages
+        overlay = manager.windows['manual']
+        assert overlay.isVisible()
+        # Still covers the English in place (seen on Windows 10.0.22000, which
+        # refuses exclusion for these windows); the engine masks it instead.
+        assert overlay.appearance.position == 'Replace'
+        _, source = physical_to_logical(result.rect)
+        assert Rect(overlay.x(), overlay.y(), overlay.width(), overlay.height()).overlap(source) > 0
+        assert manager.capture_visible_rects()
     finally:
         manager.clear(immediate=True)
         qt.processEvents()

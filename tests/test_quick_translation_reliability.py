@@ -77,6 +77,12 @@ def test_quick_capture_real_ocr_translation_repeat_cancel_failure_and_recovery(m
         assert app.service.settings.minimize_tray is False
         app.window.overlay_fields['background_opacity'].setValue(54)
         app.show_toolbox()
+        # The toolbox is visible to capture (screen sharing shows it) and its
+        # area is masked from OCR, so keep it clear of the fixture text.
+        area = app.toolbox.screen().availableGeometry()
+        app.toolbox.move(area.right() - app.toolbox.width(), area.bottom() - app.toolbox.height())
+        qt.processEvents()
+        assert not app.toolbox.capture_excluded and app.toolbox.capture_bounds
         for index in range(12):
             if index == 6:
                 snapshot[0] = frame('Bring the blue fabric to the village shop.')

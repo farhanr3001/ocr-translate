@@ -99,8 +99,9 @@ Scrolling over a settings field does not change its value; use the field, arrows
 slider or dropdown explicitly. The **Overlay** preview stays beside the scrolling
 controls. Settings save automatically. Overlay changes also update translations
 already on screen. **Restore overlay defaults** resets the appearance and behaviour
-together. If Windows cannot exclude a particular overlay from screen capture, that
-overlay goes beside the source so Watch Mode can still read the original text.
+together. If Windows cannot exclude overlays from screen capture (seen on Windows 11
+build 22000), Replace still covers the English in place; the app ignores its own overlays
+when reading the screen.
 Press **Alt+Q** again while a Quick Translate result is visible to dismiss it, then
 press it once more to select a new area. This leaves existing Watch translations in place.
 Paragraph breaks and list rows are preserved. Quick Capture waits briefly for the selection window to release focus; manual
@@ -115,8 +116,9 @@ toolbar or another window previously had focus. Failed selections display a shor
 and, while Settings is hidden, a Windows notification. Overlay windows are excluded from
 screen capture to prevent self-recognition, so remote-desktop software may not show
 translations that are visible on the laptop's physical screen. If Windows refuses that
-exclusion, translations still appear: the app ignores its own overlays when reading the
-screen and places them beside (not over) the English.
+exclusion, translations still appear in their normal place and the app ignores its own
+overlays when reading the screen. The toolbox is visible to screen sharing and recording;
+the app does not read text hidden behind it.
 
 **Overlay → Quick Translate overlay** chooses how long a Quick Translate result stays:
 **Until the text changes** (default; each line leaves when its English changes or

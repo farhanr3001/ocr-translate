@@ -518,20 +518,22 @@ class OverlayManager:
             overlay.setWindowOpacity(0)
             overlay.show()
             overlay.capture_excluded = exclude_capture(overlay)
-            if not overlay.capture_excluded:
-                a = overlay.appearance = replace(a, position='Below')
-                if not getattr(self, '_exclusion_logged', False):
-                    # Recorded once in app.log so a remote report can be diagnosed.
-                    import ctypes
-                    import logging
-                    import sys
-                    version = sys.getwindowsversion()
-                    logging.getLogger('arabic_lens').warning(
-                        'Capture exclusion refused (Windows error %s, Windows %s.%s build %s); '
-                        'Replace overlays are placed beside text', ctypes.get_last_error(),
-                        version.major, version.minor, version.build)
-                    self._exclusion_logged = True
-                self.report("Capture exclusion is unavailable; overlays are placed beside text.")
+            if not overlay.capture_excluded and not getattr(self, '_exclusion_logged', False):
+                # Some Windows builds (seen on 10.0.22000, error 8) refuse
+                # exclusion for translucent click-through windows. Replace
+                # still covers the text in place: the engine blanks our own
+                # capture-visible overlays out of its captures and treats the
+                # text beneath them as unknown, not gone. Logged once so a
+                # remote report can be diagnosed.
+                import ctypes
+                import logging
+                import sys
+                version = sys.getwindowsversion()
+                logging.getLogger('arabic_lens').warning(
+                    'Capture exclusion refused (Windows error %s, Windows %s.%s build %s); '
+                    'Replace overlays stay in place and are masked from capture', ctypes.get_last_error(),
+                    version.major, version.minor, version.build)
+                self._exclusion_logged = True
         avoid = [physical_to_logical(r)[1] for r in result.avoid_regions]
         if a.position == 'Replace':
             # Grow only into free space: never over a neighbouring value

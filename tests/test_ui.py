@@ -153,7 +153,7 @@ def test_overlay_style_preview_and_replace_window_use_selected_colors_and_font(q
                          Rect(140, 120, 300, 30), line_height=23)
     try:
         manager.show(result)
-        assert manager.windows['manual'].appearance.position == 'Below'
+        assert manager.windows['manual'].appearance.position == 'Replace'
         window.overlay_fields['background_opacity'].setValue(42)
         assert not settings.overlay.match_game
         colors = {'background_color': '#a31b61', 'text_color': '#0dfa19'}

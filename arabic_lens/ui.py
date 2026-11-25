@@ -967,8 +967,8 @@ class ToolboxWindow(QWidget):
 
     def showEvent(self, event):
         super().showEvent(event)
-        from .windows import exclude_capture
-        self.capture_excluded = exclude_capture(self)
+        # The toolbox stays visible to screen sharing and recording (remote
+        # support sees it); Watch masks its area out of captures instead.
         self.update_capture_bounds()
 
     def hideEvent(self, event):
